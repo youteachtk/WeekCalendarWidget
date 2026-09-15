@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WeekCal Widget</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app" class="widget-shell">
+    <header class="topbar drag-region">
+      <div class="brand">
+        <div class="brand-dot"></div>
+        <div>
+          <div class="brand-title">WeekCal</div>
+          <div class="brand-subtitle" id="weekLabel">Semana</div>
+        </div>
+      </div>
+      <nav class="week-nav no-drag">
+        <button id="prevWeek" class="icon-btn" title="Semana anterior">‹</button>
+        <button id="todayBtn" class="pill-btn">Hoy</button>
+        <button id="nextWeek" class="icon-btn" title="Semana siguiente">›</button>
+      </nav>
+      <div class="window-actions no-drag">
+        <div class="sync-status" id="syncStatus"><span class="sync-dot"></span><span id="syncText">Demo</span></div>
+        <button id="refreshBtn" class="icon-btn" title="Actualizar">↻</button>
+        <button id="pinBtn" class="icon-btn" title="Mantener encima">⌖</button>
+        <button id="settingsBtn" class="icon-btn" title="Configuración">⚙</button>
+        <button id="minBtn" class="icon-btn" title="Minimizar">—</button>
+        <button id="closeBtn" class="icon-btn danger" title="Cerrar">×</button>
+      </div>
+    </header>
+
+    <section class="calendar-wrap">
+      <div id="weekGrid" class="week-grid"></div>
+    </section>
+
+    <aside id="settingsPanel" class="settings-panel no-drag" aria-hidden="true">
+      <div class="settings-head">
+        <div>
+          <h2>Widget</h2>
+          <p>Vista semanal y sincronización</p>
+        </div>
+        <button id="settingsClose" class="icon-btn">×</button>
+      </div>
+
+      <div class="setting-section">
+        <h3>Google Calendar</h3>
+        <div id="googleDisconnected" class="connect-card">
+          <div>
+            <strong>Conectar cuenta</strong>
+            <small>Sincronización de lectura con Google Calendar</small>
+          </div>
+          <button id="connectGoogle" class="primary-btn">Conectar</button>
+        </div>
+        <div id="googleConnected" class="connected-card hidden">
+          <div class="connected-row"><span class="status-good">●</span><strong>Google conectado</strong></div>
+          <button id="disconnectGoogle" class="text-btn">Desconectar</button>
+        </div>
+        <div id="calendarChooser" class="calendar-chooser"></div>
+      </div>
+
+      <div class="setting-section">
+        <h3>Vista</h3>
+        <label class="setting-row"><span>Días visibles</span><select id="visibleDays"><option value="7">7 días</option><option value="5">5 días</option></select></label>
+        <label class="setting-row"><span>Comienza a las</span><select id="dayStart"></select></label>
+        <label class="setting-row"><span>Termina a las</span><select id="dayEnd"></select></label>
+        <label class="setting-row"><span>Opacidad</span><input id="opacity" type="range" min="60" max="100" step="1" /></label>
+      </div>
+
+      <div class="setting-section">
+        <h3>Windows</h3>
+        <label class="toggle-row"><span>Iniciar con Windows</span><input id="startupToggle" type="checkbox" /></label>
+        <label class="toggle-row"><span>Mantener encima de otras ventanas</span><input id="pinToggle" type="checkbox" /></label>
+      </div>
+
+      <div class="privacy-note">Los tokens de Google se guardan cifrados con el almacenamiento seguro del sistema.</div>
+    </aside>
+
+    <div id="toast" class="toast"></div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+{
+  "name": "weekcal-widget",
+  "version": "0.1.0",
+  "description": "Colorful Windows weekly calendar widget with Google Calendar sync",
+  "main": "electron/main.js",
+  "author": "YouTeach",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "dist:win": "electron-builder --win nsis portable",
+    "pack:win": "electron-builder --win dir"
+  },
+  "dependencies": {
+    "googleapis": "latest"
+  },
+  "devDependencies": {
+    "electron": "latest",
+    "electron-builder": "latest"
+  },
+  "build": {
+    "appId": "tk.youteach.weekcalwidget",
+    "productName": "WeekCal Widget",
+    "asar": true,
+    "files": [
+      "electron/**/*",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "artifactName": "WeekCal-Widget-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}
