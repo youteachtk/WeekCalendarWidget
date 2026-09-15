@@ -1,8 +1,8 @@
 {
   "name": "weekcal-widget",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Colorful Windows weekly calendar widget with Google Calendar sync",
-  "main": "electron/main.js",
+  "main": "electron/bootstrap.js",
   "author": "YouTeach",
   "license": "MIT",
   "scripts": {
@@ -27,6 +27,12 @@
       "renderer/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "native/DesktopHost/publish/DesktopHost.exe",
+        "to": "native/DesktopHost.exe"
+      }
+    ],
     "directories": {
       "output": "dist"
     },
@@ -34,15 +40,7 @@
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         }
       ],
       "artifactName": "WeekCal-Widget-${version}-${arch}.${ext}"
