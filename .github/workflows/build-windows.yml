@@ -27,5 +27,6 @@ jobs:
       - run: npm run dist:win
       - uses: actions/upload-artifact@v4
         with:
-          name: WeekCal-Windows
-          path: dist/*
+          name: WeekCal-Windows-Installer
+          path: dist/WeekCal-Widget-*.exe
+          if-no-files-found: error
