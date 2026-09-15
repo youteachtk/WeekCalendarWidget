@@ -1,70 +1,53 @@
 using System;
 using System.Runtime.InteropServices;
-using System.Threading;
 
 internal static class Program
 {
+    private const int GWL_STYLE = -16;
+    private const long WS_CHILD = 0x40000000L;
+    private const long WS_POPUP = unchecked((long)0x80000000L);
     private const uint WM_SPAWN_WORKER = 0x052C;
     private const uint SMTO_NORMAL = 0x0000;
-    private const uint GW_HWNDNEXT = 2;
-    private const int GWL_EXSTYLE = -20;
-    private const long WS_EX_TOOLWINDOW = 0x00000080L;
-    private const long WS_EX_APPWINDOW = 0x00040000L;
+    private const uint SWP_NOZORDER = 0x0004;
     private const uint SWP_NOACTIVATE = 0x0010;
     private const uint SWP_FRAMECHANGED = 0x0020;
     private const uint SWP_SHOWWINDOW = 0x0040;
 
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct RECT { public int Left, Top, Right, Bottom; }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct POINT { public int X, Y; }
-
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr FindWindow(string? lpClassName, string? lpWindowName);
 
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr childAfter, string? className, string? windowName);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr FindWindowEx(IntPtr hWndParent, IntPtr hWndChildAfter, string? lpszClass, string? lpszWindow);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool EnumWindows(EnumWindowsProc enumFunc, IntPtr lParam);
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam,
+        uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool ScreenToClient(IntPtr hWnd, ref POINT point);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
-
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
-
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
-    private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
+    private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
-    private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+    private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
 
-    private static long GetExStyle(IntPtr hWnd) => GetWindowLongPtr64(hWnd, GWL_EXSTYLE).ToInt64();
-    private static void SetExStyle(IntPtr hWnd, long style) => SetWindowLongPtr64(hWnd, GWL_EXSTYLE, new IntPtr(style));
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
-    private static IntPtr FindWallpaperWorker()
+    private static IntPtr FindDesktopWorker()
     {
         var progman = FindWindow("Progman", null);
         if (progman != IntPtr.Zero)
         {
-            SendMessageTimeout(progman, WM_SPAWN_WORKER, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1200, out _);
-            Thread.Sleep(120);
+            SendMessageTimeout(progman, WM_SPAWN_WORKER, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1000, out _);
         }
 
         IntPtr worker = IntPtr.Zero;
@@ -74,79 +57,61 @@ internal static class Program
             if (shellView != IntPtr.Zero)
             {
                 var candidate = FindWindowEx(IntPtr.Zero, top, "WorkerW", null);
-                if (candidate != IntPtr.Zero)
-                {
-                    worker = candidate;
-                    return false;
-                }
+                if (candidate != IntPtr.Zero) worker = candidate;
             }
             return true;
         }, IntPtr.Zero);
 
-        if (worker == IntPtr.Zero)
-        {
-            IntPtr current = IntPtr.Zero;
-            while ((current = FindWindowEx(IntPtr.Zero, current, "WorkerW", null)) != IntPtr.Zero)
-            {
-                if (FindWindowEx(current, IntPtr.Zero, "SHELLDLL_DefView", null) == IntPtr.Zero)
-                    worker = current;
-            }
-        }
-
         return worker != IntPtr.Zero ? worker : progman;
     }
 
-    private static int Attach(IntPtr hwnd)
+    private static void SetChildStyle(IntPtr hwnd, bool child)
     {
-        if (!GetWindowRect(hwnd, out var before)) return 4;
-        var parent = FindWallpaperWorker();
-        if (parent == IntPtr.Zero) return 5;
-
-        var point = new POINT { X = before.Left, Y = before.Top };
-        ScreenToClient(parent, ref point);
-
-        SetParent(hwnd, parent);
-        var style = GetExStyle(hwnd);
-        style = (style | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW;
-        SetExStyle(hwnd, style);
-        SetWindowPos(hwnd, IntPtr.Zero, point.X, point.Y, before.Right-before.Left, before.Bottom-before.Top,
-            SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-        Console.WriteLine("attached");
-        return 0;
+        var style = GetWindowLongPtr(hwnd, GWL_STYLE).ToInt64();
+        if (child)
+        {
+            style &= ~WS_POPUP;
+            style |= WS_CHILD;
+        }
+        else
+        {
+            style &= ~WS_CHILD;
+            style |= WS_POPUP;
+        }
+        SetWindowLongPtr(hwnd, GWL_STYLE, new IntPtr(style));
     }
 
-    private static int Detach(IntPtr hwnd)
+    private static int Main(string[] args)
     {
-        if (!GetWindowRect(hwnd, out var before)) return 6;
-        SetParent(hwnd, IntPtr.Zero);
-        var style = GetExStyle(hwnd);
-        style = (style | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW;
-        SetExStyle(hwnd, style);
-        SetWindowPos(hwnd, IntPtr.Zero, before.Left, before.Top, before.Right-before.Left, before.Bottom-before.Top,
-            SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-        Console.WriteLine("detached");
-        return 0;
-    }
+        if (args.Length < 6 || !long.TryParse(args[1], out var hwndValue)) return 64;
+        if (!int.TryParse(args[2], out var x) || !int.TryParse(args[3], out var y) ||
+            !int.TryParse(args[4], out var width) || !int.TryParse(args[5], out var height)) return 65;
 
-    public static int Main(string[] args)
-    {
-        try
+        var hwnd = new IntPtr(hwndValue);
+        var command = args[0].ToLowerInvariant();
+
+        if (command == "attach")
         {
-            if (args.Length < 2) return 2;
-            var command = args[0].ToLowerInvariant();
-            if (!long.TryParse(args[1], out var raw)) return 3;
-            var hwnd = new IntPtr(raw);
-            return command switch
-            {
-                "attach" => Attach(hwnd),
-                "detach" => Detach(hwnd),
-                _ => 2
-            };
+            var host = FindDesktopWorker();
+            if (host == IntPtr.Zero) return 2;
+            SetChildStyle(hwnd, true);
+            SetParent(hwnd, host);
+            SetWindowPos(hwnd, IntPtr.Zero, x, y, width, height,
+                SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+            Console.WriteLine("attached");
+            return 0;
         }
-        catch (Exception ex)
+
+        if (command == "detach")
         {
-            Console.Error.WriteLine(ex.Message);
-            return 10;
+            SetParent(hwnd, IntPtr.Zero);
+            SetChildStyle(hwnd, false);
+            SetWindowPos(hwnd, IntPtr.Zero, x, y, width, height,
+                SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+            Console.WriteLine("detached");
+            return 0;
         }
+
+        return 66;
     }
 }

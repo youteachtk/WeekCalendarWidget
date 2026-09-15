@@ -5,30 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>WeekCal Widget</title>
   <link rel="stylesheet" href="styles.css" />
-  <link rel="stylesheet" href="business.css" />
 </head>
 <body>
   <div id="app" class="widget-shell">
-    <header class="topbar drag-region">
-      <div class="brand">
-        <div class="brand-dot"></div>
-        <div>
-          <div class="brand-title">WeekCal</div>
-          <div class="brand-subtitle" id="weekLabel">Semana</div>
-        </div>
+    <header class="business-header drag-region">
+      <div class="month-block">
+        <div class="month-line"><span id="monthTitle">septiembre</span> <span id="yearTitle">2026</span></div>
+        <div id="weekNumberLabel" class="week-number">Semana 38</div>
       </div>
-      <nav class="week-nav no-drag">
-        <button id="prevWeek" class="icon-btn" title="Semana anterior">‹</button>
-        <button id="todayBtn" class="pill-btn">Hoy</button>
-        <button id="nextWeek" class="icon-btn" title="Semana siguiente">›</button>
-      </nav>
-      <div class="window-actions no-drag">
+      <div class="header-actions no-drag">
         <div class="sync-status" id="syncStatus"><span class="sync-dot"></span><span id="syncText">Demo</span></div>
-        <button id="refreshBtn" class="icon-btn" title="Actualizar">↻</button>
-        <button id="pinBtn" class="icon-btn" title="Mantener encima">⌖</button>
-        <button id="settingsBtn" class="icon-btn" title="Configuración">⚙</button>
-        <button id="minBtn" class="icon-btn" title="Minimizar">—</button>
-        <button id="closeBtn" class="icon-btn danger" title="Cerrar">×</button>
+        <button id="addEventBtn" class="business-action" title="Nuevo evento">+</button>
+        <button id="refreshBtn" class="business-action" title="Actualizar">↻</button>
+        <button id="settingsBtn" class="business-action settings-action" title="Configuración">⚙</button>
       </div>
     </header>
 
@@ -36,22 +25,46 @@
       <div id="weekGrid" class="week-grid"></div>
     </section>
 
+    <footer class="week-footer no-drag">
+      <button id="prevWeek" class="footer-arrow" title="Semana anterior">‹</button>
+      <button id="todayBtn" class="today-shortcut" title="Semana actual">Hoy</button>
+      <button id="nextWeek" class="footer-arrow" title="Semana siguiente">›</button>
+    </footer>
+
     <aside id="settingsPanel" class="settings-panel no-drag" aria-hidden="true">
       <div class="settings-head">
         <div>
-          <h2>Widget</h2>
-          <p>Vista semanal y sincronización</p>
+          <h2>WeekCal</h2>
+          <p>Vista semanal estilo Business Calendar</p>
         </div>
         <button id="settingsClose" class="icon-btn">×</button>
       </div>
 
       <div class="setting-section">
+        <h3>Apariencia</h3>
+        <label class="setting-row"><span>Tema</span><select id="themeSelect"><option value="dark">Oscuro</option><option value="light">Claro</option><option value="system">Sistema</option></select></label>
+        <label class="setting-row"><span>Opacidad</span><input id="opacity" type="range" min="60" max="100" step="1" /></label>
+      </div>
+
+      <div class="setting-section">
+        <h3>Vista semanal</h3>
+        <label class="setting-row"><span>Días visibles</span><select id="visibleDays"><option value="7">7 días</option><option value="5">5 días</option></select></label>
+        <label class="setting-row"><span>Primera hora</span><select id="dayStart"></select></label>
+        <label class="setting-row"><span>Última hora</span><select id="dayEnd"></select></label>
+        <p class="setting-help">El rango de horas siempre cabe completo: al cambiar el tamaño del widget, las filas se comprimen o expanden automáticamente.</p>
+      </div>
+
+      <div class="setting-section">
+        <h3>Escritorio de Windows</h3>
+        <label class="toggle-row"><span>Fijar al escritorio como widget</span><input id="desktopModeToggle" type="checkbox" /></label>
+        <label class="toggle-row"><span>Bloquear posición y tamaño</span><input id="lockWidgetToggle" type="checkbox" /></label>
+        <label class="toggle-row"><span>Iniciar con Windows</span><input id="startupToggle" type="checkbox" /></label>
+      </div>
+
+      <div class="setting-section">
         <h3>Google Calendar</h3>
         <div id="googleDisconnected" class="connect-card">
-          <div>
-            <strong>Conectar cuenta</strong>
-            <small>Sincronización de lectura con Google Calendar</small>
-          </div>
+          <div><strong>Conectar cuenta</strong><small>Lectura de tus calendarios de Google</small></div>
           <button id="connectGoogle" class="primary-btn">Conectar</button>
         </div>
         <div id="googleConnected" class="connected-card hidden">
@@ -61,26 +74,16 @@
         <div id="calendarChooser" class="calendar-chooser"></div>
       </div>
 
-      <div class="setting-section">
-        <h3>Vista</h3>
-        <label class="setting-row"><span>Días visibles</span><select id="visibleDays"><option value="7">7 días</option><option value="5">5 días</option></select></label>
-        <label class="setting-row"><span>Comienza a las</span><select id="dayStart"></select></label>
-        <label class="setting-row"><span>Termina a las</span><select id="dayEnd"></select></label>
-        <label class="setting-row"><span>Opacidad</span><input id="opacity" type="range" min="60" max="100" step="1" /></label>
+      <div class="setting-section window-section">
+        <button id="minBtn" class="secondary-btn">Minimizar</button>
+        <button id="closeBtn" class="secondary-btn danger-btn">Cerrar widget</button>
       </div>
 
-      <div class="setting-section">
-        <h3>Windows</h3>
-        <label class="toggle-row"><span>Iniciar con Windows</span><input id="startupToggle" type="checkbox" /></label>
-        <label class="toggle-row"><span>Mantener encima de otras ventanas</span><input id="pinToggle" type="checkbox" /></label>
-      </div>
-
-      <div class="privacy-note">Los tokens de Google se guardan cifrados con el almacenamiento seguro del sistema.</div>
+      <div class="privacy-note">La conexión con Google y tus preferencias se conservan al actualizar WeekCal.</div>
     </aside>
 
     <div id="toast" class="toast"></div>
   </div>
   <script src="app.js"></script>
-  <script src="business-mode.js"></script>
 </body>
 </html>

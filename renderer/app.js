@@ -2,15 +2,17 @@ const api = window.weekcal;
 
 const state = {
   settings: null,
+  extra: { desktopMode: true, lockWidget: false, theme: 'dark' },
   connected: false,
   calendars: [],
   events: [],
   weekOffset: 0,
   busy: false,
+  resizeTimer: null,
 };
 
 const $ = (id) => document.getElementById(id);
-const DAYS = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
+const DAYS = ["lun","mar","mié","jue","vie","sáb","dom"];
 const MONTHS = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 
 function addDays(date, n) {
@@ -45,35 +47,51 @@ function escapeHtml(value="") {
   }[ch]));
 }
 
-function isLight(hex="#666666") {
-  const h = hex.replace("#","");
-  if (h.length !== 6) return false;
-  const r=parseInt(h.slice(0,2),16), g=parseInt(h.slice(2,4),16), b=parseInt(h.slice(4,6),16);
-  return (r*299 + g*587 + b*114)/1000 > 165;
+function isoWeek(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+}
+
+function effectiveTheme() {
+  if (state.extra.theme !== 'system') return state.extra.theme || 'dark';
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function applyTheme() {
+  document.documentElement.dataset.theme = effectiveTheme();
+  document.body.classList.toggle('desktop-mode', Boolean(state.extra.desktopMode));
 }
 
 function demoEvents(start) {
-  const make = (day,h1,m1,h2,m2,title,color,calendarName) => ({
+  const make = (day,h1,m1,h2,m2,title,color,location="") => ({
     id: Math.random().toString(36).slice(2),
-    calendarId: calendarName,
-    calendarName,
+    calendarId: 'Demo',
+    calendarName: 'Demo',
     title,
     color,
-    foreground: isLight(color) ? "#171717" : "#fff",
+    foreground: '#fff',
     start: new Date(start.getFullYear(),start.getMonth(),start.getDate()+day,h1,m1).toISOString(),
     end: new Date(start.getFullYear(),start.getMonth(),start.getDate()+day,h2,m2).toISOString(),
-    allDay:false
+    allDay:false,
+    location
   });
   return [
-    make(0,8,0,9,20,"Anatomía","#3d7cff","Trabajo"),
-    make(0,11,30,12,40,"Planeación semanal","#905ff7","Trabajo"),
-    make(1,7,30,8,20,"Gimnasio","#ff5b55","Deportes"),
-    make(1,10,0,12,0,"Epidemiología","#21b67a","Trabajo"),
-    make(2,9,0,10,30,"Premedicina EXANI-II","#2e73df","Trabajo"),
-    make(3,8,0,9,30,"Técnicas Clínicas","#f0a53c","Trabajo"),
-    make(4,9,0,11,0,"Preparar material","#4cb56e","Trabajo"),
-    make(5,8,0,12,0,"English class","#2e78e8","Trabajo"),
-    make(6,10,0,11,30,"Deporte","#ef5350","Deportes")
+    make(0,13,0,14,0,"Robótica","#2874f0","Q3"),
+    make(1,8,0,9,0,"Control","#087a1d","Q5"),
+    make(1,12,0,13,0,"IA","#ef5b0c","AE2"),
+    make(1,13,0,14,0,"Robótica","#2874f0","Q3"),
+    make(1,14,0,15,0,"MovApps","#8424e8","AE2"),
+    make(2,12,0,14,0,"Labo IA","#ff8f10","AE2"),
+    make(2,15,0,17,0,"Labo Robótica","#2099ef","LM1"),
+    make(3,9,0,11,0,"Labo Ctrl","#29995d","Y6"),
+    make(3,12,0,13,0,"Examen","#e2232c"),
+    make(3,14,0,15,0,"Lab MovApps","#9b30df","AE2"),
+    make(4,8,0,9,0,"Control","#087a1d","Q5"),
+    make(4,12,0,13,0,"IA","#ef5b0c","AE2"),
+    make(4,13,0,14,0,"Robótica","#2874f0","Q3")
   ];
 }
 
@@ -104,6 +122,9 @@ function layoutEvents(events) {
 }
 
 function render() {
+  if (!state.settings) return;
+  applyTheme();
+
   const grid=$("weekGrid");
   grid.innerHTML="";
   const s=state.settings;
@@ -111,11 +132,14 @@ function render() {
   const week=startOfWeek(state.weekOffset);
   const end=addDays(week,days-1);
   const today=new Date();
+  const focusDate = state.weekOffset === 0 ? today : week;
 
-  $("weekLabel").textContent =
-    `${week.getDate()} ${MONTHS[week.getMonth()]} – ${end.getDate()} ${MONTHS[end.getMonth()]} ${end.getFullYear()}`;
+  $("monthTitle").textContent=MONTHS[focusDate.getMonth()];
+  $("yearTitle").textContent=String(focusDate.getFullYear());
+  const w1=isoWeek(week), w2=isoWeek(end);
+  $("weekNumberLabel").textContent=w1===w2 ? `Semana ${w1}` : `Semanas ${w1}–${w2}`;
 
-  const cols=`72px repeat(${days}, minmax(112px,1fr))`;
+  const cols=`var(--time-w) repeat(${days}, minmax(0,1fr))`;
 
   const head=document.createElement("div");
   head.className="grid-head";
@@ -126,8 +150,9 @@ function render() {
   for (let i=0;i<days;i++) {
     const d=addDays(week,i);
     const el=document.createElement("div");
-    el.className="day-head"+(sameDay(d,today)?" today":"");
-    el.innerHTML=`<div class="day-name">${DAYS[i]}</div><div class="day-number">${d.getDate()}</div><div class="day-month">${MONTHS[d.getMonth()]}</div>`;
+    const weekend=days===7 && i>=5;
+    el.className="day-head"+(sameDay(d,today)?" today":"")+(weekend?" weekend":"");
+    el.innerHTML=`<span class="day-name">${DAYS[i]}</span><span class="day-number">${d.getDate()}</span>`;
     head.appendChild(el);
   }
   grid.appendChild(head);
@@ -137,18 +162,19 @@ function render() {
   all.style.gridTemplateColumns=cols;
   const label=document.createElement("div");
   label.className="all-day-label";
-  label.textContent="Todo el día";
   all.appendChild(label);
   for (let i=0;i<days;i++) {
     const d=addDays(week,i);
+    const weekend=days===7 && i>=5;
     const cell=document.createElement("div");
-    cell.className="all-day-cell";
+    cell.className="all-day-cell"+(sameDay(d,today)?" today":"")+(weekend?" weekend":"");
     for (const ev of state.events.filter(e=>e.allDay && String(e.start).slice(0,10)===localDateKey(d))) {
       const item=document.createElement("div");
       item.className="all-day-event";
       item.textContent=ev.title;
       item.style.background=ev.color||"#6f7cff";
-      item.style.color=ev.foreground||"#fff";
+      item.style.color="#fff";
+      item.title=ev.title;
       if (ev.htmlLink) item.onclick=()=>api.openLink(ev.htmlLink);
       cell.appendChild(item);
     }
@@ -156,24 +182,33 @@ function render() {
   }
   grid.appendChild(all);
 
-  const startHour=Number(s.dayStartHour ?? 6);
+  const startHour=Number(s.dayStartHour ?? 8);
   const endHour=Number(s.dayEndHour ?? 23);
   const hours=Math.max(4,endHour-startHour);
+
+  const gridRect=grid.getBoundingClientRect();
+  const headH=head.getBoundingClientRect().height || 42;
+  const allH=all.getBoundingClientRect().height || 34;
+  const available=Math.max(150, gridRect.height-headH-allH);
+  const hourHeight=available/hours;
+  grid.style.setProperty("--hour-h",`${hourHeight}px`);
 
   const area=document.createElement("div");
   area.className="time-area";
   area.style.gridTemplateColumns=cols;
-  area.style.height=`${hours*54}px`;
+  area.style.height=`${available}px`;
 
   const timeCol=document.createElement("div");
   timeCol.className="time-col";
   for (let h=0;h<=hours;h++) {
-    const y=h*54;
-    const t=document.createElement("div");
-    t.className="time-label";
-    t.style.top=`${y}px`;
-    t.textContent=`${String(startHour+h).padStart(2,"0")}:00`;
-    timeCol.appendChild(t);
+    const y=h*hourHeight;
+    if (h<hours) {
+      const t=document.createElement("div");
+      t.className="time-label";
+      t.style.top=`${y+Math.min(14,hourHeight*.26)}px`;
+      t.textContent=String(startHour+h).padStart(2,"0");
+      timeCol.appendChild(t);
+    }
     const line=document.createElement("div");
     line.className="hour-line";
     line.style.top=`${y}px`;
@@ -183,20 +218,15 @@ function render() {
 
   for (let i=0;i<days;i++) {
     const d=addDays(week,i);
+    const weekend=days===7 && i>=5;
     const col=document.createElement("div");
-    col.className="day-col"+(sameDay(d,today)?" today":"");
+    col.className="day-col"+(sameDay(d,today)?" today":"")+(weekend?" weekend":"");
 
     for (let h=0;h<=hours;h++) {
       const line=document.createElement("div");
       line.className="hour-line";
-      line.style.top=`${h*54}px`;
+      line.style.top=`${h*hourHeight}px`;
       col.appendChild(line);
-      if (h<hours) {
-        const half=document.createElement("div");
-        half.className="half-line";
-        half.style.top=`${h*54+27}px`;
-        col.appendChild(half);
-      }
     }
 
     const timed=state.events.filter(ev=>!ev.allDay && sameDay(new Date(ev.start),d));
@@ -206,19 +236,20 @@ function render() {
       const enMin=(en.getHours()-startHour)*60+en.getMinutes();
       if (enMin<=0 || stMin>=hours*60) continue;
 
-      const top=Math.max(0,stMin)/60*54;
-      const height=Math.max(22,(Math.min(hours*60,enMin)-Math.max(0,stMin))/60*54-2);
+      const top=Math.max(0,stMin)/60*hourHeight;
+      const rawHeight=(Math.min(hours*60,enMin)-Math.max(0,stMin))/60*hourHeight;
+      const height=Math.max(13,rawHeight-1);
       const card=document.createElement("div");
-      card.className="event";
+      card.className="event"+(height<27?" compact":"");
       card.style.top=`${top}px`;
       card.style.height=`${height}px`;
-      card.style.left=`calc(${item.left}% + 4px)`;
-      card.style.width=`calc(${item.width}% - 8px)`;
-      card.style.right="auto";
+      card.style.left=`calc(${item.left}% + 1px)`;
+      card.style.width=`calc(${item.width}% - 2px)`;
       card.style.background=ev.color||"#6f7cff";
-      card.style.color=ev.foreground||(isLight(ev.color)?"#171717":"#fff");
-      card.innerHTML=`<div class="event-title">${escapeHtml(ev.title)}</div><div class="event-time">${fmtTime(st)}–${fmtTime(en)}</div>${ev.location?`<div class="event-location">${escapeHtml(ev.location)}</div>`:""}`;
-      card.title=`${ev.title}\n${fmtTime(st)}–${fmtTime(en)}${ev.calendarName?"\n"+ev.calendarName:""}`;
+      card.style.color="#fff";
+      const second=ev.location ? `<div class="event-sub">${escapeHtml(ev.location)}</div>` : "";
+      card.innerHTML=`<div class="event-title">${escapeHtml(ev.title)}</div>${second}`;
+      card.title=`${ev.title}\n${fmtTime(st)}–${fmtTime(en)}${ev.location?"\n"+ev.location:""}${ev.calendarName?"\n"+ev.calendarName:""}`;
       if (ev.htmlLink) card.onclick=()=>api.openLink(ev.htmlLink);
       col.appendChild(card);
     }
@@ -228,9 +259,7 @@ function render() {
       if (mins>=0 && mins<=hours*60) {
         const now=document.createElement("div");
         now.className="now-line";
-        now.style.top=`${mins/60*54}px`;
-        now.style.left="0";
-        now.style.right="0";
+        now.style.top=`${mins/60*hourHeight}px`;
         col.appendChild(now);
       }
     }
@@ -268,11 +297,14 @@ function renderCalendarChooser() {
 
 function syncControls() {
   $("visibleDays").value=String(state.settings.visibleDays||7);
-  $("dayStart").value=String(state.settings.dayStartHour ?? 6);
+  $("dayStart").value=String(state.settings.dayStartHour ?? 8);
   $("dayEnd").value=String(state.settings.dayEndHour ?? 23);
   $("opacity").value=String(Math.round((state.settings.opacity||.97)*100));
   $("startupToggle").checked=Boolean(state.settings.startWithWindows);
-  $("pinToggle").checked=Boolean(state.settings.alwaysOnTop);
+  $("themeSelect").value=state.extra.theme||'dark';
+  $("desktopModeToggle").checked=Boolean(state.extra.desktopMode);
+  $("lockWidgetToggle").checked=Boolean(state.extra.lockWidget);
+  applyTheme();
 }
 
 async function updateGoogleState() {
@@ -361,18 +393,27 @@ function bindUI() {
   $("nextWeek").onclick=()=>{state.weekOffset++;refresh(false);};
   $("todayBtn").onclick=()=>{state.weekOffset=0;refresh(false);};
   $("refreshBtn").onclick=()=>refresh(true);
+  $("addEventBtn").onclick=()=>api.openLink("https://calendar.google.com/calendar/u/0/r/eventedit");
   $("settingsBtn").onclick=()=>toggleSettings(true);
   $("settingsClose").onclick=()=>toggleSettings(false);
   $("minBtn").onclick=()=>api.minimize();
   $("closeBtn").onclick=()=>api.close();
 
-  $("pinBtn").onclick=async()=>{
-    state.settings=await api.setPin(!state.settings.alwaysOnTop);
-    syncControls();
+  $("themeSelect").onchange=async(e)=>{
+    state.extra=await api.setTheme(e.target.value);
+    applyTheme();
+    render();
   };
-  $("pinToggle").onchange=async(e)=>{
-    state.settings=await api.setPin(e.target.checked);
+  $("desktopModeToggle").onchange=async(e)=>{
+    const response=await api.setDesktopMode(e.target.checked);
+    state.extra=response.settings||state.extra;
     syncControls();
+    toast(response.result?.ok===false ? `No se pudo fijar: ${response.result.error}` : (e.target.checked?"Widget fijado al escritorio":"Modo ventana activado"));
+  };
+  $("lockWidgetToggle").onchange=async(e)=>{
+    state.extra=await api.setLock(e.target.checked);
+    syncControls();
+    toast(e.target.checked?"Posición y tamaño bloqueados":"Widget desbloqueado");
   };
   $("startupToggle").onchange=async(e)=>{state.settings=await api.setStartup(e.target.checked);};
   $("opacity").oninput=async(e)=>{state.settings=await api.setOpacity(Number(e.target.value)/100);};
@@ -384,7 +425,7 @@ function bindUI() {
     try {
       toast("Selecciona tus credenciales OAuth de Google…");
       const result=await api.googleConnect();
-      if (!result?.cancelled) {
+      if (!result?.canceled) {
         await updateGoogleState();
         await refresh(true);
       }
@@ -397,10 +438,19 @@ function bindUI() {
     await updateGoogleState();
     await refresh(false);
   };
+
+  window.addEventListener("resize",()=>{
+    clearTimeout(state.resizeTimer);
+    state.resizeTimer=setTimeout(render,70);
+  });
+  window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{
+    if (state.extra.theme==='system') { applyTheme(); render(); }
+  });
 }
 
 async function init() {
   state.settings=await api.getSettings();
+  try { state.extra=await api.getExtraSettings(); } catch {}
   fillHourSelects();
   syncControls();
   bindUI();

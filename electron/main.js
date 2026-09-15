@@ -12,7 +12,7 @@ const SETTINGS_DEFAULTS = {
   opacity: 0.97,
   weekStartsMonday: true,
   visibleDays: 7,
-  dayStartHour: 6,
+  dayStartHour: 8,
   dayEndHour: 23,
   selectedCalendars: [],
   windowBounds: null,
@@ -88,8 +88,8 @@ function createWindow() {
   const bounds = settings.windowBounds || defaultBounds();
   mainWindow = new BrowserWindow({
     ...bounds,
-    minWidth: 860,
-    minHeight: 560,
+    minWidth: 640,
+    minHeight: 420,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -98,7 +98,7 @@ function createWindow() {
     show: false,
     skipTaskbar: true,
     alwaysOnTop: Boolean(settings.alwaysOnTop),
-    hasShadow: true,
+    hasShadow: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
