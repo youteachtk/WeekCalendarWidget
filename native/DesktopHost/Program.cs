@@ -327,6 +327,12 @@ internal static class Program
     private static bool IsInside(int x, int y, RECT r)
         => x >= r.Left && x <= r.Right && y >= r.Top && y <= r.Bottom;
 
+    private static bool CellIntersectsWidget(int x, int y, int width, int height, RECT widgetArea)
+        => x < widgetArea.Right &&
+           x + width > widgetArea.Left &&
+           y < widgetArea.Bottom &&
+           y + height > widgetArea.Top;
+
     private static int ArrangeIconsAroundWidget(
         IntPtr listView,
         IEnumerable<IconPosition> positions,
@@ -395,12 +401,12 @@ internal static class Program
         MapWindowPoints(IntPtr.Zero, listView, points, 2);
 
         var spacing = GetSpacing(listView);
-        var forbidden = new RECT
+        var widgetArea = new RECT
         {
-            Left = Math.Min(points[0].X, points[1].X) - spacing.X / 2,
-            Top = Math.Min(points[0].Y, points[1].Y) - spacing.Y / 2,
-            Right = Math.Max(points[0].X, points[1].X) + spacing.X / 2,
-            Bottom = Math.Max(points[0].Y, points[1].Y) + spacing.Y / 2
+            Left = Math.Min(points[0].X, points[1].X),
+            Top = Math.Min(points[0].Y, points[1].Y),
+            Right = Math.Max(points[0].X, points[1].X),
+            Bottom = Math.Max(points[0].Y, points[1].Y)
         };
 
         GetClientRect(listView, out var client);
@@ -414,7 +420,7 @@ internal static class Program
             for (var y = anchorY; y < client.Bottom; y += spacing.Y)
             {
                 if (x < client.Left || y < client.Top) continue;
-                if (IsInside(x, y, forbidden)) continue;
+                if (CellIntersectsWidget(x, y, spacing.X, spacing.Y, widgetArea)) continue;
                 candidates.Add((x, y));
             }
         }
@@ -458,12 +464,12 @@ internal static class Program
         {
             if (command == "attach")
             {
-                var host = FindDesktopHost();
-                if (host == IntPtr.Zero) return 2;
+                var desktopSurface = FindDesktopListView();
+                if (desktopSurface == IntPtr.Zero) return 2;
                 SetChildStyle(hwnd, true);
-                SetParent(hwnd, host);
+                SetParent(hwnd, desktopSurface);
                 var parentPoint = new[] { new POINT { X = x, Y = y } };
-                MapWindowPoints(IntPtr.Zero, host, parentPoint, 1);
+                MapWindowPoints(IntPtr.Zero, desktopSurface, parentPoint, 1);
                 SetWindowPos(hwnd, IntPtr.Zero, parentPoint[0].X, parentPoint[0].Y, width, height,
                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
                 Console.WriteLine("attached");

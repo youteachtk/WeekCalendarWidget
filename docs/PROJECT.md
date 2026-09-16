@@ -83,3 +83,11 @@ En la conexión de Google Calendar disponible durante el desarrollo se detectaro
 - Enabling **Reservar espacio entre los iconos** now reflows the complete saved desktop icon sequence through the available Windows icon grid while skipping WeekCal's reserved rectangle.
 - This applies whether Windows Auto Arrange was originally on or off, so the result is not limited to a single overlapping column.
 - The original icon positions and Auto Arrange state are still kept in the snapshot so disabling the reservation can restore the previous layout as closely as Windows allows.
+
+
+## 0.4.6 Win+D and icon bounds
+- The previous Windows 11 desktop mode still attached WeekCal to the Shell/Progman host. On current Windows 11, Show Desktop / Win+D can cloak or hide shell-hosted top-level windows without producing the normal Electron minimize/hide events, so the existing JavaScript protection could not reliably restore the widget.
+- Desktop mode now changes architecture: WeekCal is parented directly to the desktop SysListView32 / FolderView surface. This makes it a real desktop child instead of a normal shell-hosted window and is intended to keep it present when Win+D is used.
+- Existing Electron protections (setMinimizable(false), minimize/hide restoration) remain as a second layer.
+- Icon reservation previously tested only an icon's anchor point against the widget area. LVM_GETITEMPOSITION gives the item position, while the icon/label occupies a full grid cell. This allowed an anchor to sit just outside WeekCal while part of the icon cell still overlapped the widget.
+- Candidate positions now reject the entire icon grid cell (spacing.X x spacing.Y) when any part of that cell intersects WeekCal's full mapped width/height.
