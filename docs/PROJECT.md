@@ -77,3 +77,9 @@ En la conexión de Google Calendar disponible durante el desarrollo se detectaro
 - Desktop-host attachment now converts screen coordinates into the selected parent's client coordinates before positioning the widget.
 - When Windows icon auto-arrange was enabled, WeekCal now reflows the complete icon sequence through free desktop grid cells while skipping the widget rectangle, rather than moving only icons whose original anchor point happened to intersect the widget.
 - Manual icon layouts remain conservative: only icons intersecting the reserved widget area are moved.
+
+
+## 0.4.5 full icon reflow
+- Enabling **Reservar espacio entre los iconos** now reflows the complete saved desktop icon sequence through the available Windows icon grid while skipping WeekCal's reserved rectangle.
+- This applies whether Windows Auto Arrange was originally on or off, so the result is not limited to a single overlapping column.
+- The original icon positions and Auto Arrange state are still kept in the snapshot so disabling the reservation can restore the previous layout as closely as Windows allows.

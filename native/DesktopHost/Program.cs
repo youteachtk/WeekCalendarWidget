@@ -327,7 +327,7 @@ internal static class Program
     private static bool IsInside(int x, int y, RECT r)
         => x >= r.Left && x <= r.Right && y >= r.Top && y <= r.Bottom;
 
-    private static int ArrangeAutoIconsAroundWidget(
+    private static int ArrangeIconsAroundWidget(
         IntPtr listView,
         IEnumerable<IconPosition> positions,
         IReadOnlyList<(int X, int Y)> candidates,
@@ -408,16 +408,6 @@ internal static class Program
         var anchorX = ((first.X % spacing.X) + spacing.X) % spacing.X;
         var anchorY = ((first.Y % spacing.Y) + spacing.Y) % spacing.Y;
 
-        string CellKey(int x, int y)
-        {
-            var cx = (int)Math.Round((x - anchorX) / (double)spacing.X);
-            var cy = (int)Math.Round((y - anchorY) / (double)spacing.Y);
-            return cx + ":" + cy;
-        }
-
-        var blocked = new HashSet<string>(
-            state.Positions.Where(p => !IsInside(p.X, p.Y, forbidden)).Select(p => CellKey(p.X, p.Y)));
-
         var candidates = new List<(int X, int Y)>();
         for (var x = anchorX; x < client.Right; x += spacing.X)
         {
@@ -429,39 +419,7 @@ internal static class Program
             }
         }
 
-        var moved = 0;
-        if (state.AutoArrange)
-        {
-            moved = ArrangeAutoIconsAroundWidget(listView, state.Positions, candidates, currentCount);
-        }
-        else
-        {
-            foreach (var p in state.Positions.Where(p => p.Index < currentCount && IsInside(p.X, p.Y, forbidden)))
-            {
-                (int X, int Y)? best = null;
-                long bestDistance = long.MaxValue;
-                foreach (var c in candidates)
-                {
-                    var key = CellKey(c.X, c.Y);
-                    if (blocked.Contains(key)) continue;
-                    var dx = c.X - p.X;
-                    var dy = c.Y - p.Y;
-                    var distance = (long)dx * dx + (long)dy * dy;
-                    if (distance < bestDistance)
-                    {
-                        bestDistance = distance;
-                        best = c;
-                    }
-                }
-
-                if (best.HasValue)
-                {
-                    SetPosition(listView, p.Index, best.Value.X, best.Value.Y);
-                    blocked.Add(CellKey(best.Value.X, best.Value.Y));
-                    moved++;
-                }
-            }
-        }
+        var moved = ArrangeIconsAroundWidget(listView, state.Positions, candidates, currentCount);
 
         return JsonSerializer.Serialize(new { moved, autoArrangeWasEnabled = state.AutoArrange });
     }
