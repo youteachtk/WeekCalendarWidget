@@ -1,6 +1,6 @@
 {
   "name": "weekcal-widget",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Colorful Windows weekly calendar widget with Google Calendar sync",
   "main": "electron/bootstrap.js",
   "author": "YouTeach",
@@ -15,8 +15,8 @@
     "googleapis": "latest"
   },
   "devDependencies": {
-    "electron": "latest",
-    "electron-builder": "latest"
+    "electron": "44.4.0",
+    "electron-builder": "26.15.3"
   },
   "build": {
     "appId": "tk.youteach.weekcalwidget",
@@ -51,7 +51,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true
     }
   }
 }
