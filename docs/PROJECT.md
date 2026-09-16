@@ -54,3 +54,10 @@ En la conexión de Google Calendar disponible durante el desarrollo se detectaro
 - Los cambios se escriben directamente en Google Calendar y se sincronizan con Android/iPhone.
 - WeekCal guarda el color exacto en `BC2-Color` y asigna el color de evento Google más cercano para mejorar la consistencia visual en otros clientes.
 - La primera vez que se use edición, Google pedirá ampliar el permiso OAuth a eventos de lectura/escritura; no vuelve a pedir el archivo JSON.
+
+
+## 0.4.2 startup migration
+- A previous 0.4.x build could persist `reserveIconSpace: true` before the user explicitly enabled the feature.
+- Changing only the default to `false` was insufficient for upgrades because persisted settings override defaults.
+- On startup, WeekCal now treats icon reservation as disabled unless the current user has explicitly configured the option.
+- This prevents the native desktop-icon reservation helper from running automatically on upgraded installations.

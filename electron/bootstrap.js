@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
+const { normalizeExtraSettings } = require('./extra-settings');
 
 // Adds native Windows desktop-widget behavior to the existing app.
 require('./main.js');
@@ -9,6 +10,7 @@ require('./main.js');
 const EXTRA_DEFAULTS = {
   desktopMode: true,
   reserveIconSpace: false,
+  reserveIconSpaceExplicitlyEnabled: false,
   lockWidget: false,
   theme: 'dark'
 };
@@ -28,9 +30,9 @@ function iconStateFile() {
 function loadExtra() {
   if (extra) return extra;
   try {
-    extra = { ...EXTRA_DEFAULTS, ...JSON.parse(fs.readFileSync(extraFile(), 'utf8')) };
+    extra = normalizeExtraSettings(JSON.parse(fs.readFileSync(extraFile(), 'utf8')), EXTRA_DEFAULTS);
   } catch {
-    extra = { ...EXTRA_DEFAULTS };
+    extra = normalizeExtraSettings({}, EXTRA_DEFAULTS);
   }
   return extra;
 }
@@ -178,7 +180,7 @@ ipcMain.handle('widget-extra:set-desktop-mode', async (_e, value) => {
 });
 ipcMain.handle('widget-extra:set-reserve-icons', async (_e, value) => {
   const enabled = Boolean(value);
-  saveExtra({ reserveIconSpace: enabled });
+  saveExtra({ reserveIconSpace: enabled, reserveIconSpaceExplicitlyEnabled: true });
   const result = enabled ? await applyIconReservation() : await restoreIcons();
   return { settings: loadExtra(), result };
 });
