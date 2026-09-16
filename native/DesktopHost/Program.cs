@@ -119,6 +119,10 @@ internal static class Program
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, [Out] byte[] lpBuffer, int dwSize, out IntPtr lpNumberOfBytesRead);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool WriteProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, byte[] lpBuffer, int nSize, out IntPtr lpNumberOfBytesWritten);
+
     [DllImport("kernel32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CloseHandle(IntPtr hObject);
@@ -254,8 +258,33 @@ internal static class Program
 
     private static void SetPosition(IntPtr listView, int index, int x, int y)
     {
-        var packed = ((long)(ushort)y << 16) | (ushort)x;
-        SendMessage(listView, LVM_SETITEMPOSITION32, new IntPtr(index), new IntPtr(packed));
+        GetWindowThreadProcessId(listView, out var pid);
+        var process = OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_QUERY_INFORMATION, false, pid);
+        if (process == IntPtr.Zero)
+            throw new InvalidOperationException("No se pudo acceder a Explorer para mover los iconos.");
+
+        var remote = VirtualAllocEx(process, IntPtr.Zero, (UIntPtr)8, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (remote == IntPtr.Zero)
+        {
+            CloseHandle(process);
+            throw new InvalidOperationException("No se pudo reservar memoria para mover los iconos.");
+        }
+
+        try
+        {
+            var pointBytes = new byte[8];
+            Buffer.BlockCopy(BitConverter.GetBytes(x), 0, pointBytes, 0, 4);
+            Buffer.BlockCopy(BitConverter.GetBytes(y), 0, pointBytes, 4, 4);
+            if (!WriteProcessMemory(process, remote, pointBytes, pointBytes.Length, out var written) || written.ToInt64() != pointBytes.Length)
+                throw new InvalidOperationException("No se pudo escribir la posición del icono en Explorer.");
+
+            SendMessage(listView, LVM_SETITEMPOSITION32, new IntPtr(index), remote);
+        }
+        finally
+        {
+            VirtualFreeEx(process, remote, UIntPtr.Zero, MEM_RELEASE);
+            CloseHandle(process);
+        }
     }
 
     private static bool IsInside(int x, int y, RECT r)

@@ -61,3 +61,11 @@ En la conexión de Google Calendar disponible durante el desarrollo se detectaro
 - Changing only the default to `false` was insufficient for upgrades because persisted settings override defaults.
 - On startup, WeekCal now treats icon reservation as disabled unless the current user has explicitly configured the option.
 - This prevents the native desktop-icon reservation helper from running automatically on upgraded installations.
+
+
+## 0.4.3 icon positioning fix
+- Root cause of the Explorer/WeekCal crash when enabling **Reservar espacio entre los iconos** was identified in the native helper.
+- `LVM_SETITEMPOSITION32` requires `lParam` to point to a `POINT` structure in the Explorer process.
+- Previous code incorrectly packed x/y into an integer and passed that value as if it were the pointer.
+- WeekCal now allocates remote memory in Explorer, writes the 32-bit x/y POINT there, sends that pointer to `LVM_SETITEMPOSITION32`, then frees the memory.
+- Regression test: `tests/desktop-host-protocol.test.js`.
