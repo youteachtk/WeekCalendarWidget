@@ -8,7 +8,7 @@ require('./main.js');
 
 const EXTRA_DEFAULTS = {
   desktopMode: true,
-  reserveIconSpace: true,
+  reserveIconSpace: false,
   lockWidget: false,
   theme: 'dark'
 };
@@ -190,6 +190,12 @@ app.whenReady().then(() => {
     if (!win) return;
     protectDesktopWidget(win);
     applyLock(Boolean(extra.lockWidget));
-    if (extra.desktopMode) await applyDesktopMode(true);
+    if (extra.desktopMode) {
+      const result = await applyDesktopMode(true);
+      if (!result?.ok) {
+        saveExtra({ desktopMode: false });
+        win.setMinimizable(true);
+      }
+    }
   }, 500);
 });

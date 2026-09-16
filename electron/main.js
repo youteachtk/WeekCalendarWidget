@@ -27,6 +27,16 @@ let mainWindow = null;
 let settings = null;
 let oauthClient = null;
 
+function appendCrashLog(label, details = '') {
+  try {
+    const line = `[${new Date().toISOString()}] ${label} ${String(details || '')}\n`;
+    fs.appendFileSync(userFile('weekcal-crash.log'), line, 'utf8');
+  } catch {}
+}
+
+process.on('uncaughtException', (error) => appendCrashLog('uncaughtException', error?.stack || error));
+process.on('unhandledRejection', (reason) => appendCrashLog('unhandledRejection', reason?.stack || reason));
+
 function userFile(name) {
   return path.join(app.getPath('userData'), name);
 }
@@ -112,7 +122,11 @@ function createWindow() {
   });
 
   mainWindow.setOpacity(Number(settings.opacity || 0.97));
-  mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    appendCrashLog('render-process-gone', JSON.stringify(details));
+  });
+  mainWindow.webContents.on('unresponsive', () => appendCrashLog('renderer-unresponsive'));
+  mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html')).catch(err => appendCrashLog('loadFile', err?.stack || err));
   mainWindow.once('ready-to-show', () => {
     mainWindow.showInactive();
   });
