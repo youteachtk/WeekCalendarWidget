@@ -1,0 +1,38 @@
+name: Build iOS
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "ios/**"
+      - ".github/workflows/build-ios.yml"
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+      - name: Build for iPhone Simulator
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project WeekCalIOS.xcodeproj \
+            -scheme WeekCalIOS \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+      - name: Upload simulator app
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeekCal-iOS-Simulator
+          path: ios/build/Build/Products/Debug-iphonesimulator/WeekCalIOS.app
+          if-no-files-found: error
