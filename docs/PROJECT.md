@@ -36,3 +36,11 @@ En la conexión de Google Calendar disponible durante el desarrollo se detectaro
 - No se debe depender de un botón visible de “Cerrar” dentro del widget para poder actualizarlo.
 - Después de una actualización normal, el instalador puede volver a abrir WeekCal.
 - La conexión de Google Calendar y la configuración del usuario deben conservarse entre versiones.
+
+
+## Integración con iconos del escritorio
+- Opción **Reservar espacio entre los iconos** disponible cuando WeekCal está fijado al escritorio.
+- Los iconos que ocupen el rectángulo del widget se desplazan a la celda libre más cercana alrededor del widget.
+- Si el usuario mueve o redimensiona WeekCal, la reserva se recalcula automáticamente.
+- Al desactivar la opción o salir del modo escritorio se intentan restaurar las posiciones anteriores.
+- Si Windows tenía activado el autoacomodo de iconos, WeekCal lo suspende mientras la reserva está activa y lo restaura al desactivarla.

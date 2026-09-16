@@ -3,20 +3,26 @@ const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 
-// Keep the existing app intact; this bootstrap adds true desktop-widget behavior.
+// Adds native Windows desktop-widget behavior to the existing app.
 require('./main.js');
 
 const EXTRA_DEFAULTS = {
   desktopMode: true,
+  reserveIconSpace: true,
   lockWidget: false,
   theme: 'dark'
 };
 
 let extra = null;
 let desktopAttached = false;
+let iconTimer = null;
 
 function extraFile() {
   return path.join(app.getPath('userData'), 'widget-extra-settings.json');
+}
+
+function iconStateFile() {
+  return path.join(app.getPath('userData'), 'desktop-icon-layout.json');
 }
 
 function loadExtra() {
@@ -51,24 +57,52 @@ function hwndString(win) {
   return buf.length >= 8 ? buf.readBigUInt64LE(0).toString() : String(buf.readUInt32LE(0));
 }
 
-function runHelper(command, win) {
+function runHelper(command, win, extraArgs = []) {
   return new Promise(resolve => {
     if (process.platform !== 'win32') return resolve({ ok: false, error: 'Solo disponible en Windows.' });
     const helper = helperPath();
     if (!helper || !fs.existsSync(helper)) return resolve({ ok: false, error: 'No se encontró DesktopHost.exe.' });
     const b = win.getBounds();
-    const args = [command, hwndString(win), String(b.x), String(b.y), String(b.width), String(b.height)];
+    const args = [command, hwndString(win), String(b.x), String(b.y), String(b.width), String(b.height), ...extraArgs];
     execFile(helper, args, { windowsHide: true }, (error, stdout, stderr) => {
       if (error) return resolve({ ok: false, error: String(stderr || error.message).trim() });
-      resolve({ ok: true, message: String(stdout || '').trim() });
+      const message = String(stdout || '').trim();
+      let parsed = null;
+      try { parsed = JSON.parse(message); } catch {}
+      resolve({ ok: true, message, ...(parsed || {}) });
     });
   });
+}
+
+async function applyIconReservation() {
+  const win = currentWindow();
+  const s = loadExtra();
+  if (!win) return { ok: false, error: 'No hay ventana activa.' };
+  if (!s.desktopMode || !s.reserveIconSpace) return { ok: true, moved: 0 };
+  return runHelper('reserve-icons', win, [iconStateFile()]);
+}
+
+async function restoreIcons() {
+  const win = currentWindow();
+  if (!win) return { ok: false, error: 'No hay ventana activa.' };
+  return runHelper('restore-icons', win, [iconStateFile()]);
+}
+
+function scheduleIconReservation() {
+  clearTimeout(iconTimer);
+  iconTimer = setTimeout(() => {
+    if (loadExtra().desktopMode && loadExtra().reserveIconSpace) {
+      applyIconReservation().catch(() => {});
+    }
+  }, 350);
 }
 
 async function applyDesktopMode(enabled) {
   const win = currentWindow();
   if (!win) return { ok: false, error: 'No hay ventana activa.' };
   const value = Boolean(enabled);
+
+  if (!value && loadExtra().reserveIconSpace) await restoreIcons();
   saveExtra({ desktopMode: value });
 
   if (value) {
@@ -80,6 +114,10 @@ async function applyDesktopMode(enabled) {
     if (result.ok) {
       if (win.isMinimized()) win.restore();
       if (!win.isVisible()) win.showInactive();
+      if (loadExtra().reserveIconSpace) {
+        const iconResult = await applyIconReservation();
+        result.iconResult = iconResult;
+      }
     }
     return result;
   }
@@ -113,6 +151,9 @@ function protectDesktopWidget(win) {
       if (!desktopAttached) await applyDesktopMode(true);
     }, 25);
   });
+
+  win.on('move', scheduleIconReservation);
+  win.on('resize', scheduleIconReservation);
 }
 
 function applyLock(value) {
@@ -135,10 +176,15 @@ ipcMain.handle('widget-extra:set-desktop-mode', async (_e, value) => {
   const result = await applyDesktopMode(Boolean(value));
   return { settings: loadExtra(), result };
 });
+ipcMain.handle('widget-extra:set-reserve-icons', async (_e, value) => {
+  const enabled = Boolean(value);
+  saveExtra({ reserveIconSpace: enabled });
+  const result = enabled ? await applyIconReservation() : await restoreIcons();
+  return { settings: loadExtra(), result };
+});
 
 app.whenReady().then(() => {
   loadExtra();
-  // main.js creates the BrowserWindow in its own whenReady callback first.
   setTimeout(async () => {
     const win = currentWindow();
     if (!win) return;

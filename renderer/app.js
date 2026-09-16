@@ -2,7 +2,7 @@ const api = window.weekcal;
 
 const state = {
   settings: null,
-  extra: { desktopMode: true, lockWidget: false, theme: 'dark' },
+  extra: { desktopMode: true, reserveIconSpace: true, lockWidget: false, theme: 'dark' },
   connected: false,
   calendars: [],
   events: [],
@@ -303,6 +303,8 @@ function syncControls() {
   $("startupToggle").checked=Boolean(state.settings.startWithWindows);
   $("themeSelect").value=state.extra.theme||'dark';
   $("desktopModeToggle").checked=Boolean(state.extra.desktopMode);
+  $("reserveIconSpaceToggle").checked=Boolean(state.extra.reserveIconSpace);
+  $("reserveIconSpaceToggle").disabled=!state.extra.desktopMode;
   $("lockWidgetToggle").checked=Boolean(state.extra.lockWidget);
   applyTheme();
 }
@@ -409,6 +411,17 @@ function bindUI() {
     state.extra=response.settings||state.extra;
     syncControls();
     toast(response.result?.ok===false ? `No se pudo fijar: ${response.result.error}` : (e.target.checked?"Widget fijado al escritorio":"Modo ventana activado"));
+  };
+  $("reserveIconSpaceToggle").onchange=async(e)=>{
+    const response=await api.setReserveIconSpace(e.target.checked);
+    state.extra=response.settings||state.extra;
+    syncControls();
+    if (response.result?.ok===false) {
+      toast("No se pudieron acomodar los iconos: "+response.result.error);
+    } else {
+      const moved=response.result?.moved;
+      toast(e.target.checked ? (Number.isFinite(moved) ? `Iconos acomodados: ${moved}` : "Espacio reservado para WeekCal") : "Posiciones de iconos restauradas");
+    }
   };
   $("lockWidgetToggle").onchange=async(e)=>{
     state.extra=await api.setLock(e.target.checked);

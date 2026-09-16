@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('weekcal', {
   getExtraSettings: () => ipcRenderer.invoke('widget-extra:get'),
   setTheme: (value) => ipcRenderer.invoke('widget-extra:set-theme', value),
   setDesktopMode: (value) => ipcRenderer.invoke('widget-extra:set-desktop-mode', value),
+  setReserveIconSpace: (value) => ipcRenderer.invoke('widget-extra:set-reserve-icons', value),
   setLock: (value) => ipcRenderer.invoke('widget-extra:set-lock', value),
   googleStatus: () => ipcRenderer.invoke('google:status'),
   googleConnect: () => ipcRenderer.invoke('google:connect'),
