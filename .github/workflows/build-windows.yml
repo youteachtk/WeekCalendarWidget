@@ -11,6 +11,7 @@ on:
       - "electron/**"
       - "renderer/**"
       - "native/**"
+      - "tests/**"
       - "package.json"
       - ".github/workflows/build-windows.yml"
 
