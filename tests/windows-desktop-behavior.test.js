@@ -24,3 +24,12 @@ test('auto-arranged desktop icons are reflowed around the entire widget exclusio
     'Auto-arrange layouts must reflow all icons around the reserved widget area'
   );
 });
+
+test('icon reservation reflows the whole desktop grid even when Windows auto-arrange was off', () => {
+  assert.match(source, /ArrangeIconsAroundWidget\s*\(/, 'reservation should use one full-grid reflow path');
+  assert.match(
+    source,
+    /var\s+moved\s*=\s*ArrangeIconsAroundWidget\(listView,\s*state\.Positions,\s*candidates,\s*currentCount\)/,
+    'all saved icon positions should be reflowed through free cells around the widget'
+  );
+});
