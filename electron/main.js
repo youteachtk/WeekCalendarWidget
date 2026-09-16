@@ -138,6 +138,19 @@ function normalizeClientConfig(json) {
   return { client_id: cfg.client_id, client_secret: cfg.client_secret };
 }
 
+function bc2ColorFromDescription(description = '') {
+  const match = String(description).match(/(?:^|\n)\s*BC2-Color:\s*(-?\d+)/i);
+  if (!match) return null;
+  try {
+    let value = Number(match[1]);
+    if (!Number.isFinite(value)) return null;
+    value = value >>> 0;
+    return '#' + (value & 0xFFFFFF).toString(16).padStart(6, '0').toUpperCase();
+  } catch {
+    return null;
+  }
+}
+
 function createOAuthClient(credentials, redirectUri) {
   const client = new google.auth.OAuth2(credentials.client_id, credentials.client_secret, redirectUri);
   const token = getTokenRecord();
@@ -269,6 +282,7 @@ async function fetchGoogleEvents({ timeMin, timeMax, calendarIds }) {
       for (const ev of res.data.items || []) {
         const meta = calMap[id] || { name: id, backgroundColor: '#4f7cff', foregroundColor: '#fff' };
         const palette = ev.colorId ? eventColors[ev.colorId] : null;
+        const bc2Color = bc2ColorFromDescription(ev.description);
         all.push({
           id: ev.id,
           calendarId: id,
@@ -277,9 +291,10 @@ async function fetchGoogleEvents({ timeMin, timeMax, calendarIds }) {
           start: ev.start?.dateTime || ev.start?.date,
           end: ev.end?.dateTime || ev.end?.date,
           allDay: Boolean(ev.start?.date),
-          color: palette?.background || meta.backgroundColor,
-          foreground: palette?.foreground || meta.foregroundColor || '#fff',
+          color: bc2Color || palette?.background || meta.backgroundColor,
+          foreground: bc2Color ? '#ffffff' : (palette?.foreground || meta.foregroundColor || '#fff'),
           location: ev.location || '',
+          description: ev.description || '',
           status: ev.status || 'confirmed',
           htmlLink: ev.htmlLink || ''
         });
