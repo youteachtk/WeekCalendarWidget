@@ -64,6 +64,13 @@ internal static class Program
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr FindWindow(string? lpClassName, string? lpWindowName);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetShellWindow();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr FindWindowEx(IntPtr hWndParent, IntPtr hWndChildAfter, string? lpszClass, string? lpszWindow);
 
@@ -105,6 +112,12 @@ internal static class Program
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr GetModuleHandle(string? lpModuleName);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Ansi, ExactSpelling = true)]
+    private static extern IntPtr GetProcAddress(IntPtr hModule, string lpProcName);
+
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
 
@@ -127,25 +140,49 @@ internal static class Program
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CloseHandle(IntPtr hObject);
 
-    private static IntPtr FindDesktopWorker()
+    private static bool ShouldUseShellWindowInsteadOfWorkerW()
     {
-        var progman = FindWindow("Progman", null);
-        if (progman != IntPtr.Zero)
-            SendMessageTimeout(progman, WM_SPAWN_WORKER, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1000, out _);
+        // Windows 11 24H2+ reordered the desktop hierarchy so Progman/Shell owns
+        // SHELLDLL_DefView and WorkerW. The export below is present on affected builds.
+        var user32 = GetModuleHandle("user32.dll");
+        return user32 != IntPtr.Zero &&
+            GetProcAddress(user32, "GetCurrentMonitorTopologyId") != IntPtr.Zero;
+    }
+
+    private static bool BelongToSameProcess(IntPtr a, IntPtr b)
+    {
+        GetWindowThreadProcessId(a, out var aPid);
+        GetWindowThreadProcessId(b, out var bPid);
+        return aPid != 0 && aPid == bPid;
+    }
+
+    private static IntPtr FindDesktopHost()
+    {
+        var shell = GetShellWindow();
+        if (shell == IntPtr.Zero) shell = FindWindow("Progman", null);
+        if (shell == IntPtr.Zero) return IntPtr.Zero;
+
+        if (ShouldUseShellWindowInsteadOfWorkerW())
+        {
+            var defView = FindWindowEx(shell, IntPtr.Zero, "SHELLDLL_DefView", null);
+            if (defView != IntPtr.Zero) return shell;
+        }
+
+        // On older builds, ensure the classic WorkerW desktop host exists.
+        SendMessageTimeout(shell, WM_SPAWN_WORKER, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1000, out _);
+
+        var directDefView = FindWindowEx(shell, IntPtr.Zero, "SHELLDLL_DefView", null);
+        if (directDefView != IntPtr.Zero) return shell;
 
         IntPtr worker = IntPtr.Zero;
-        EnumWindows((top, _) =>
+        while ((worker = FindWindowEx(IntPtr.Zero, worker, "WorkerW", null)) != IntPtr.Zero)
         {
-            var shellView = FindWindowEx(top, IntPtr.Zero, "SHELLDLL_DefView", null);
-            if (shellView != IntPtr.Zero)
-            {
-                var candidate = FindWindowEx(IntPtr.Zero, top, "WorkerW", null);
-                if (candidate != IntPtr.Zero) worker = candidate;
-            }
-            return true;
-        }, IntPtr.Zero);
+            if (!IsWindowVisible(worker) || !BelongToSameProcess(shell, worker)) continue;
+            if (FindWindowEx(worker, IntPtr.Zero, "SHELLDLL_DefView", null) != IntPtr.Zero)
+                return worker;
+        }
 
-        return worker != IntPtr.Zero ? worker : progman;
+        return shell;
     }
 
     private static IntPtr FindDesktopListView()
@@ -290,6 +327,32 @@ internal static class Program
     private static bool IsInside(int x, int y, RECT r)
         => x >= r.Left && x <= r.Right && y >= r.Top && y <= r.Bottom;
 
+    private static int ArrangeAutoIconsAroundWidget(
+        IntPtr listView,
+        IEnumerable<IconPosition> positions,
+        IReadOnlyList<(int X, int Y)> candidates,
+        int currentCount)
+    {
+        var ordered = positions
+            .Where(p => p.Index < currentCount)
+            .OrderBy(p => p.X)
+            .ThenBy(p => p.Y)
+            .ToList();
+
+        var moved = 0;
+        var limit = Math.Min(ordered.Count, candidates.Count);
+        for (var i = 0; i < limit; i++)
+        {
+            var p = ordered[i];
+            var target = candidates[i];
+            if (p.X == target.X && p.Y == target.Y) continue;
+            SetPosition(listView, p.Index, target.X, target.Y);
+            moved++;
+        }
+
+        return moved;
+    }
+
     private static string ReserveIcons(IntPtr widget, string statePath)
     {
         var listView = FindDesktopListView();
@@ -356,9 +419,9 @@ internal static class Program
             state.Positions.Where(p => !IsInside(p.X, p.Y, forbidden)).Select(p => CellKey(p.X, p.Y)));
 
         var candidates = new List<(int X, int Y)>();
-        for (var y = anchorY; y < client.Bottom; y += spacing.Y)
+        for (var x = anchorX; x < client.Right; x += spacing.X)
         {
-            for (var x = anchorX; x < client.Right; x += spacing.X)
+            for (var y = anchorY; y < client.Bottom; y += spacing.Y)
             {
                 if (x < client.Left || y < client.Top) continue;
                 if (IsInside(x, y, forbidden)) continue;
@@ -367,29 +430,36 @@ internal static class Program
         }
 
         var moved = 0;
-        foreach (var p in state.Positions.Where(p => p.Index < currentCount && IsInside(p.X, p.Y, forbidden)))
+        if (state.AutoArrange)
         {
-            (int X, int Y)? best = null;
-            long bestDistance = long.MaxValue;
-            foreach (var c in candidates)
+            moved = ArrangeAutoIconsAroundWidget(listView, state.Positions, candidates, currentCount);
+        }
+        else
+        {
+            foreach (var p in state.Positions.Where(p => p.Index < currentCount && IsInside(p.X, p.Y, forbidden)))
             {
-                var key = CellKey(c.X, c.Y);
-                if (blocked.Contains(key)) continue;
-                var dx = c.X - p.X;
-                var dy = c.Y - p.Y;
-                var distance = (long)dx * dx + (long)dy * dy;
-                if (distance < bestDistance)
+                (int X, int Y)? best = null;
+                long bestDistance = long.MaxValue;
+                foreach (var c in candidates)
                 {
-                    bestDistance = distance;
-                    best = c;
+                    var key = CellKey(c.X, c.Y);
+                    if (blocked.Contains(key)) continue;
+                    var dx = c.X - p.X;
+                    var dy = c.Y - p.Y;
+                    var distance = (long)dx * dx + (long)dy * dy;
+                    if (distance < bestDistance)
+                    {
+                        bestDistance = distance;
+                        best = c;
+                    }
                 }
-            }
 
-            if (best.HasValue)
-            {
-                SetPosition(listView, p.Index, best.Value.X, best.Value.Y);
-                blocked.Add(CellKey(best.Value.X, best.Value.Y));
-                moved++;
+                if (best.HasValue)
+                {
+                    SetPosition(listView, p.Index, best.Value.X, best.Value.Y);
+                    blocked.Add(CellKey(best.Value.X, best.Value.Y));
+                    moved++;
+                }
             }
         }
 
@@ -430,11 +500,13 @@ internal static class Program
         {
             if (command == "attach")
             {
-                var host = FindDesktopWorker();
+                var host = FindDesktopHost();
                 if (host == IntPtr.Zero) return 2;
                 SetChildStyle(hwnd, true);
                 SetParent(hwnd, host);
-                SetWindowPos(hwnd, IntPtr.Zero, x, y, width, height,
+                var parentPoint = new[] { new POINT { X = x, Y = y } };
+                MapWindowPoints(IntPtr.Zero, host, parentPoint, 1);
+                SetWindowPos(hwnd, IntPtr.Zero, parentPoint[0].X, parentPoint[0].Y, width, height,
                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
                 Console.WriteLine("attached");
                 return 0;

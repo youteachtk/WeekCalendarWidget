@@ -69,3 +69,11 @@ En la conexión de Google Calendar disponible durante el desarrollo se detectaro
 - Previous code incorrectly packed x/y into an integer and passed that value as if it were the pointer.
 - WeekCal now allocates remote memory in Explorer, writes the 32-bit x/y POINT there, sends that pointer to `LVM_SETITEMPOSITION32`, then frees the memory.
 - Regression test: `tests/desktop-host-protocol.test.js`.
+
+
+## 0.4.4 desktop behavior
+- **Esc** closes the open settings panel; when the event editor is open, Esc closes the editor first.
+- Windows 11 24H2+ changed the desktop window hierarchy. WeekCal now detects that layout and uses the Shell/Progman host instead of the old WorkerW path, matching the compatibility strategy used by mature desktop-widget software.
+- Desktop-host attachment now converts screen coordinates into the selected parent's client coordinates before positioning the widget.
+- When Windows icon auto-arrange was enabled, WeekCal now reflows the complete icon sequence through free desktop grid cells while skipping the widget rectangle, rather than moving only icons whose original anchor point happened to intersect the widget.
+- Manual icon layouts remain conservative: only icons intersecting the reserved widget area are moved.

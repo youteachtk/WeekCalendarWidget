@@ -626,6 +626,14 @@ function bindUI() {
     renderEventColorPalette(e.target.value);
   };
   $("eventModal").onclick=(e)=>{ if(e.target===$("eventModal")) closeEventEditor(); };
+  document.addEventListener("keydown",(e)=>{
+    if (e.key !== "Escape") return;
+    if (!$("eventModal").classList.contains("hidden")) {
+      closeEventEditor();
+      return;
+    }
+    if ($("settingsPanel").classList.contains("open")) toggleSettings(false);
+  });
   $("minBtn").onclick=()=>api.minimize();
   $("closeBtn").onclick=()=>api.close();
 
