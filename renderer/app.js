@@ -8,6 +8,10 @@ const state = {
   events: [],
   weekOffset: 0,
   busy: false,
+  writeEnabled: false,
+  eventColors: {},
+  editorEvent: null,
+  selectedColorId: '',
   resizeTimer: null,
 };
 
@@ -39,6 +43,39 @@ function localDateKey(d) {
 
 function fmtTime(d) {
   return d.toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit",hour12:false});
+}
+
+function dateInputValue(date) {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+function timeInputValue(date) {
+  const d = new Date(date);
+  return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+}
+
+function cleanBc2Description(value="") {
+  return String(value).split(/\r?\n/).filter(line=>!/^\s*BC2-Color:\s*-?\d+\s*$/i.test(line)).join("\n").trim();
+}
+
+function hexToRgb(hex) {
+  const value=String(hex||"").replace("#","");
+  if (!/^[0-9a-f]{6}$/i.test(value)) return null;
+  return [parseInt(value.slice(0,2),16),parseInt(value.slice(2,4),16),parseInt(value.slice(4,6),16)];
+}
+
+function nearestEventColorId(hex) {
+  const rgb=hexToRgb(hex);
+  if (!rgb) return "";
+  let best="", distance=Infinity;
+  for (const [id,entry] of Object.entries(state.eventColors||{})) {
+    const other=hexToRgb(entry.background);
+    if (!other) continue;
+    const d=(rgb[0]-other[0])**2+(rgb[1]-other[1])**2+(rgb[2]-other[2])**2;
+    if (d<distance) { distance=d; best=id; }
+  }
+  return best;
 }
 
 function escapeHtml(value="") {
@@ -175,7 +212,7 @@ function render() {
       item.style.background=ev.color||"#6f7cff";
       item.style.color="#fff";
       item.title=ev.title;
-      if (ev.htmlLink) item.onclick=()=>api.openLink(ev.htmlLink);
+      item.onclick=()=>openEventEditor(ev);
       cell.appendChild(item);
     }
     all.appendChild(cell);
@@ -250,7 +287,7 @@ function render() {
       const second=ev.location ? `<div class="event-sub">${escapeHtml(ev.location)}</div>` : "";
       card.innerHTML=`<div class="event-title">${escapeHtml(ev.title)}</div>${second}`;
       card.title=`${ev.title}\n${fmtTime(st)}–${fmtTime(en)}${ev.location?"\n"+ev.location:""}${ev.calendarName?"\n"+ev.calendarName:""}`;
-      if (ev.htmlLink) card.onclick=()=>api.openLink(ev.htmlLink);
+      card.onclick=()=>openEventEditor(ev);
       col.appendChild(card);
     }
 
@@ -312,6 +349,7 @@ function syncControls() {
 async function updateGoogleState() {
   const status=await api.googleStatus();
   state.connected=Boolean(status.connected);
+  state.writeEnabled=Boolean(status.writeEnabled);
   $("googleDisconnected").classList.toggle("hidden",state.connected);
   $("googleConnected").classList.toggle("hidden",!state.connected);
   $("syncStatus").className=state.connected?"sync-status ok":"sync-status";
@@ -319,6 +357,7 @@ async function updateGoogleState() {
   if (state.connected) {
     try {
       state.calendars=await api.listCalendars();
+      state.eventColors=await api.listEventColors();
       renderCalendarChooser();
     } catch (e) {
       toast("No se pudieron leer los calendarios: "+e.message);
@@ -377,6 +416,184 @@ async function updateDisplay() {
   render();
 }
 
+function writableCalendars() {
+  return state.calendars.filter(c=>c.writable);
+}
+
+function renderEditorCalendars(selectedId="") {
+  const select=$("eventCalendar");
+  select.innerHTML="";
+  const writable=writableCalendars();
+  for (const cal of writable) {
+    const opt=new Option(cal.name,cal.id);
+    select.add(opt);
+  }
+  if (selectedId && writable.some(c=>c.id===selectedId)) select.value=selectedId;
+  else if (writable.some(c=>c.primary)) select.value=writable.find(c=>c.primary).id;
+}
+
+function renderEventColorPalette(hex) {
+  const host=$("eventColorPalette");
+  host.innerHTML="";
+  const sorted=Object.entries(state.eventColors||{}).sort((a,b)=>Number(a[0])-Number(b[0]));
+  for (const [id,entry] of sorted) {
+    const sw=document.createElement("button");
+    sw.type="button";
+    sw.className="event-color-swatch"+(id===state.selectedColorId?" selected":"");
+    sw.style.background=entry.background;
+    sw.title=entry.background;
+    sw.onclick=()=>{
+      state.selectedColorId=id;
+      $("eventCustomColor").value=entry.background;
+      renderEventColorPalette(entry.background);
+    };
+    host.appendChild(sw);
+  }
+}
+
+function defaultEditorDate() {
+  const week=startOfWeek(state.weekOffset);
+  const today=new Date();
+  if (today>=week && today<addDays(week,7)) return today;
+  return week;
+}
+
+function openEventEditor(ev=null) {
+  if (!state.connected) {
+    toast("Conecta Google Calendar primero");
+    toggleSettings(true);
+    return;
+  }
+  const writable=writableCalendars();
+  if (!writable.length) {
+    toast("No hay un calendario con permiso de edición");
+    return;
+  }
+
+  state.editorEvent=ev;
+  $("eventEditorTitle").textContent=ev?"Editar evento":"Nuevo evento";
+  $("eventEditorSubtitle").textContent=ev?"Los cambios se sincronizan con Google Calendar":"Se guardará directamente en Google Calendar";
+  $("eventDeleteBtn").classList.toggle("hidden",!ev);
+  $("eventWriteNotice").classList.toggle("hidden",state.writeEnabled);
+
+  renderEditorCalendars(ev?.calendarId||"");
+
+  const base=ev?new Date(ev.start):defaultEditorDate();
+  const start=ev?new Date(ev.start):new Date(base.getFullYear(),base.getMonth(),base.getDate(),9,0);
+  const end=ev?new Date(ev.end):new Date(base.getFullYear(),base.getMonth(),base.getDate(),10,0);
+
+  $("eventTitle").value=ev?.title||"";
+  $("eventDate").value=dateInputValue(base);
+  $("eventAllDay").checked=Boolean(ev?.allDay);
+  $("eventStartTime").value=timeInputValue(start);
+  $("eventEndTime").value=timeInputValue(end);
+  $("eventLocation").value=ev?.location||"";
+  $("eventDescription").value=cleanBc2Description(ev?.description||"");
+  $("eventRepeat").value="none";
+  $("eventRepeat").disabled=Boolean(ev);
+  $("eventReminder").value="default";
+  $("eventTimeRow").classList.toggle("hidden",$("eventAllDay").checked);
+
+  const defaultHex=ev?.color||writable.find(c=>c.id===$("eventCalendar").value)?.backgroundColor||"#1367FB";
+  $("eventCustomColor").value=defaultHex;
+  state.selectedColorId=ev?.colorId||nearestEventColorId(defaultHex);
+  renderEventColorPalette(defaultHex);
+
+  $("eventModal").classList.remove("hidden");
+  $("eventModal").setAttribute("aria-hidden","false");
+  setTimeout(()=>$("eventTitle").focus(),30);
+}
+
+function closeEventEditor() {
+  $("eventModal").classList.add("hidden");
+  $("eventModal").setAttribute("aria-hidden","true");
+  state.editorEvent=null;
+}
+
+async function ensureWriteAccess() {
+  if (state.writeEnabled) return true;
+  $("eventWriteNotice").classList.remove("hidden");
+  toast("Autoriza edición de Google Calendar una sola vez…");
+  try {
+    const result=await api.googleAuthorizeWrite();
+    if (!result?.connected) return false;
+    await updateGoogleState();
+    $("eventWriteNotice").classList.add("hidden");
+    return true;
+  } catch(e) {
+    toast("No se pudo activar edición: "+e.message);
+    return false;
+  }
+}
+
+function eventPayload() {
+  const allDay=$("eventAllDay").checked;
+  const start=$("eventStartTime").value||"09:00";
+  let end=$("eventEndTime").value||"10:00";
+  if (!allDay && end<=start) {
+    const [h,m]=start.split(":").map(Number);
+    const mins=h*60+m+60;
+    end=`${String(Math.floor(mins/60)%24).padStart(2,"0")}:${String(mins%60).padStart(2,"0")}`;
+    $("eventEndTime").value=end;
+  }
+  const colorHex=$("eventCustomColor").value;
+  return {
+    id:state.editorEvent?.id||"",
+    calendarId:$("eventCalendar").value,
+    title:$("eventTitle").value.trim(),
+    date:$("eventDate").value,
+    allDay,
+    startTime:start,
+    endTime:end,
+    location:$("eventLocation").value.trim(),
+    description:$("eventDescription").value.trim(),
+    repeat:$("eventRepeat").value,
+    reminder:$("eventReminder").value,
+    colorHex,
+    colorId:nearestEventColorId(colorHex)
+  };
+}
+
+async function saveEditorEvent() {
+  const payload=eventPayload();
+  if (!payload.title) { toast("Escribe el nombre de la actividad"); $("eventTitle").focus(); return; }
+  if (!payload.date) { toast("Selecciona una fecha"); return; }
+  if (!await ensureWriteAccess()) return;
+
+  $("eventSaveBtn").disabled=true;
+  $("eventSaveBtn").textContent="Guardando…";
+  try {
+    if (state.editorEvent) await api.updateEvent(payload);
+    else await api.createEvent(payload);
+    closeEventEditor();
+    await refresh(false);
+    toast(state.editorEvent?"Evento actualizado":"Evento creado");
+  } catch(e) {
+    if (String(e.message).includes("WRITE_AUTH_REQUIRED")) {
+      state.writeEnabled=false;
+      if (await ensureWriteAccess()) return saveEditorEvent();
+    }
+    toast("No se pudo guardar: "+e.message);
+  } finally {
+    $("eventSaveBtn").disabled=false;
+    $("eventSaveBtn").textContent="Guardar";
+  }
+}
+
+async function deleteEditorEvent() {
+  if (!state.editorEvent) return;
+  if (!await ensureWriteAccess()) return;
+  if (!confirm(`¿Eliminar “${state.editorEvent.title}”?`)) return;
+  try {
+    await api.deleteEvent({id:state.editorEvent.id,calendarId:state.editorEvent.calendarId});
+    closeEventEditor();
+    await refresh(false);
+    toast("Evento eliminado");
+  } catch(e) {
+    toast("No se pudo eliminar: "+e.message);
+  }
+}
+
 function toggleSettings(open) {
   $("settingsPanel").classList.toggle("open",open);
   $("settingsPanel").setAttribute("aria-hidden",String(!open));
@@ -395,9 +612,19 @@ function bindUI() {
   $("nextWeek").onclick=()=>{state.weekOffset++;refresh(false);};
   $("todayBtn").onclick=()=>{state.weekOffset=0;refresh(false);};
   $("refreshBtn").onclick=()=>refresh(true);
-  $("addEventBtn").onclick=()=>api.openLink("https://calendar.google.com/calendar/u/0/r/eventedit");
+  $("addEventBtn").onclick=()=>openEventEditor();
   $("settingsBtn").onclick=()=>toggleSettings(true);
   $("settingsClose").onclick=()=>toggleSettings(false);
+  $("eventEditorClose").onclick=closeEventEditor;
+  $("eventCancelBtn").onclick=closeEventEditor;
+  $("eventSaveBtn").onclick=saveEditorEvent;
+  $("eventDeleteBtn").onclick=deleteEditorEvent;
+  $("eventAllDay").onchange=(e)=>$("eventTimeRow").classList.toggle("hidden",e.target.checked);
+  $("eventCustomColor").oninput=(e)=>{
+    state.selectedColorId=nearestEventColorId(e.target.value);
+    renderEventColorPalette(e.target.value);
+  };
+  $("eventModal").onclick=(e)=>{ if(e.target===$("eventModal")) closeEventEditor(); };
   $("minBtn").onclick=()=>api.minimize();
   $("closeBtn").onclick=()=>api.close();
 

@@ -44,3 +44,13 @@ En la conexión de Google Calendar disponible durante el desarrollo se detectaro
 - Si el usuario mueve o redimensiona WeekCal, la reserva se recalcula automáticamente.
 - Al desactivar la opción o salir del modo escritorio se intentan restaurar las posiciones anteriores.
 - Si Windows tenía activado el autoacomodo de iconos, WeekCal lo suspende mientras la reserva está activa y lo restaura al desactivarla.
+
+
+## Editor de eventos integrado (0.4)
+- El botón **+** ya no abre Google Calendar en el navegador.
+- WeekCal abre su propio editor compacto sobre el widget.
+- Campos: actividad, calendario, fecha, todo el día, hora de inicio/fin, repetición, recordatorio, lugar, color y notas.
+- Los eventos existentes se abren en el mismo editor al hacer clic y se pueden modificar o eliminar.
+- Los cambios se escriben directamente en Google Calendar y se sincronizan con Android/iPhone.
+- WeekCal guarda el color exacto en `BC2-Color` y asigna el color de evento Google más cercano para mejorar la consistencia visual en otros clientes.
+- La primera vez que se use edición, Google pedirá ampliar el permiso OAuth a eventos de lectura/escritura; no vuelve a pedir el archivo JSON.

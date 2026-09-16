@@ -16,7 +16,12 @@ contextBridge.exposeInMainWorld('weekcal', {
   setLock: (value) => ipcRenderer.invoke('widget-extra:set-lock', value),
   googleStatus: () => ipcRenderer.invoke('google:status'),
   googleConnect: () => ipcRenderer.invoke('google:connect'),
+  googleAuthorizeWrite: () => ipcRenderer.invoke('google:authorize-write'),
   googleDisconnect: () => ipcRenderer.invoke('google:disconnect'),
   listCalendars: () => ipcRenderer.invoke('google:list-calendars'),
-  getEvents: (args) => ipcRenderer.invoke('google:get-events', args)
+  listEventColors: () => ipcRenderer.invoke('google:list-event-colors'),
+  getEvents: (args) => ipcRenderer.invoke('google:get-events', args),
+  createEvent: (payload) => ipcRenderer.invoke('google:create-event', payload),
+  updateEvent: (payload) => ipcRenderer.invoke('google:update-event', payload),
+  deleteEvent: (payload) => ipcRenderer.invoke('google:delete-event', payload)
 });

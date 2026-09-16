@@ -66,7 +66,7 @@
       <div class="setting-section">
         <h3>Google Calendar</h3>
         <div id="googleDisconnected" class="connect-card">
-          <div><strong>Conectar cuenta</strong><small>Lectura de tus calendarios de Google</small></div>
+          <div><strong>Conectar cuenta</strong><small>Lectura y edición de tus calendarios de Google</small></div>
           <button id="connectGoogle" class="primary-btn">Conectar</button>
         </div>
         <div id="googleConnected" class="connected-card hidden">
@@ -83,6 +83,93 @@
 
       <div class="privacy-note">La conexión con Google y tus preferencias se conservan al actualizar WeekCal.</div>
     </aside>
+
+    <div id="eventModal" class="event-modal hidden no-drag" aria-hidden="true">
+      <div class="event-editor" role="dialog" aria-modal="true" aria-labelledby="eventEditorTitle">
+        <div class="event-editor-head">
+          <div>
+            <h2 id="eventEditorTitle">Nuevo evento</h2>
+            <p id="eventEditorSubtitle">Se guardará directamente en Google Calendar</p>
+          </div>
+          <button id="eventEditorClose" class="icon-btn" title="Cerrar">×</button>
+        </div>
+
+        <div class="event-editor-body">
+          <label class="event-field event-title-field">
+            <span>Actividad</span>
+            <input id="eventTitle" type="text" placeholder="Título del evento" autocomplete="off" />
+          </label>
+
+          <div class="event-two">
+            <label class="event-field">
+              <span>Calendario</span>
+              <select id="eventCalendar"></select>
+            </label>
+            <label class="event-field">
+              <span>Fecha</span>
+              <input id="eventDate" type="date" />
+            </label>
+          </div>
+
+          <label class="event-check"><input id="eventAllDay" type="checkbox" /><span>Todo el día</span></label>
+
+          <div id="eventTimeRow" class="event-two">
+            <label class="event-field"><span>Inicio</span><input id="eventStartTime" type="time" step="300" /></label>
+            <label class="event-field"><span>Fin</span><input id="eventEndTime" type="time" step="300" /></label>
+          </div>
+
+          <div class="event-two">
+            <label class="event-field">
+              <span>Repetir</span>
+              <select id="eventRepeat">
+                <option value="none">No repetir</option>
+                <option value="DAILY">Cada día</option>
+                <option value="WEEKLY">Cada semana</option>
+                <option value="MONTHLY">Cada mes</option>
+                <option value="YEARLY">Cada año</option>
+              </select>
+            </label>
+            <label class="event-field">
+              <span>Recordatorio</span>
+              <select id="eventReminder">
+                <option value="default">Predeterminado</option>
+                <option value="none">Sin recordatorio</option>
+                <option value="10">10 minutos antes</option>
+                <option value="30">30 minutos antes</option>
+                <option value="60">1 hora antes</option>
+                <option value="1440">1 día antes</option>
+              </select>
+            </label>
+          </div>
+
+          <label class="event-field">
+            <span>Lugar</span>
+            <input id="eventLocation" type="text" placeholder="Ubicación" />
+          </label>
+
+          <div class="event-color-section">
+            <div class="event-color-label"><span>Color</span><input id="eventCustomColor" type="color" value="#1367FB" title="Color exacto" /></div>
+            <div id="eventColorPalette" class="event-color-palette"></div>
+          </div>
+
+          <label class="event-field">
+            <span>Notas</span>
+            <textarea id="eventDescription" rows="3" placeholder="Notas opcionales"></textarea>
+          </label>
+
+          <div id="eventWriteNotice" class="event-write-notice hidden">
+            Para crear o modificar eventos, WeekCal necesita permiso de edición de Google Calendar. Solo se solicitará una vez.
+          </div>
+        </div>
+
+        <div class="event-editor-actions">
+          <button id="eventDeleteBtn" class="editor-delete hidden">Eliminar</button>
+          <div class="editor-spacer"></div>
+          <button id="eventCancelBtn" class="secondary-btn editor-action">Cancelar</button>
+          <button id="eventSaveBtn" class="primary-btn editor-action">Guardar</button>
+        </div>
+      </div>
+    </div>
 
     <div id="toast" class="toast"></div>
   </div>
