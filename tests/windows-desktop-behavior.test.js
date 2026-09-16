@@ -16,20 +16,19 @@ test('Windows 11 24H2+ uses the shell window as the desktop host', () => {
   );
 });
 
-test('auto-arranged desktop icons are reflowed around the entire widget exclusion area', () => {
-  assert.match(source, /ArrangeAutoIconsAroundWidget\s*\(/, 'DesktopHost must have a full auto-arrange reflow path');
-  assert.match(
-    source,
-    /if\s*\(state\.AutoArrange\)[\s\S]{0,500}ArrangeAutoIconsAroundWidget/,
-    'Auto-arrange layouts must reflow all icons around the reserved widget area'
-  );
-});
-
-test('icon reservation reflows the whole desktop grid even when Windows auto-arrange was off', () => {
-  assert.match(source, /ArrangeIconsAroundWidget\s*\(/, 'reservation should use one full-grid reflow path');
+test('desktop icons are reflowed around the entire widget exclusion area', () => {
+  assert.match(source, /ArrangeIconsAroundWidget\s*\(/, 'DesktopHost must have a full desktop-grid reflow path');
   assert.match(
     source,
     /var\s+moved\s*=\s*ArrangeIconsAroundWidget\(listView,\s*state\.Positions,\s*candidates,\s*currentCount\)/,
-    'all saved icon positions should be reflowed through free cells around the widget'
+    'all saved icon positions must be reflowed through free cells around the widget'
+  );
+});
+
+test('full icon reflow is independent of the original Auto Arrange state', () => {
+  assert.doesNotMatch(
+    source,
+    /if\s*\(state\.AutoArrange\)[\s\S]{0,500}ArrangeIconsAroundWidget/,
+    'full reflow must not be limited only to Auto Arrange layouts'
   );
 });
