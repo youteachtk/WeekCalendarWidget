@@ -4,8 +4,12 @@ using System.Runtime.InteropServices;
 internal static class Program
 {
     private const int GWL_STYLE = -16;
+    private const int GWL_EXSTYLE = -20;
     private const long WS_CHILD = 0x40000000L;
     private const long WS_POPUP = unchecked((long)0x80000000L);
+    private const long WS_MINIMIZEBOX = 0x00020000L;
+    private const long WS_EX_TOOLWINDOW = 0x00000080L;
+    private const long WS_EX_APPWINDOW = 0x00040000L;
     private const uint WM_SPAWN_WORKER = 0x052C;
     private const uint SMTO_NORMAL = 0x0000;
     private const uint SWP_NOZORDER = 0x0004;
@@ -68,17 +72,23 @@ internal static class Program
     private static void SetChildStyle(IntPtr hwnd, bool child)
     {
         var style = GetWindowLongPtr(hwnd, GWL_STYLE).ToInt64();
+        var exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE).ToInt64();
         if (child)
         {
             style &= ~WS_POPUP;
+            style &= ~WS_MINIMIZEBOX;
             style |= WS_CHILD;
+            exStyle |= WS_EX_TOOLWINDOW;
+            exStyle &= ~WS_EX_APPWINDOW;
         }
         else
         {
             style &= ~WS_CHILD;
             style |= WS_POPUP;
+            exStyle &= ~WS_EX_TOOLWINDOW;
         }
         SetWindowLongPtr(hwnd, GWL_STYLE, new IntPtr(style));
+        SetWindowLongPtr(hwnd, GWL_EXSTYLE, new IntPtr(exStyle));
     }
 
     private static int Main(string[] args)
