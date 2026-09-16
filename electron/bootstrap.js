@@ -74,8 +74,13 @@ async function applyDesktopMode(enabled) {
   if (value) {
     win.setAlwaysOnTop(false);
     win.setSkipTaskbar(true);
+    win.setMinimizable(false);
     const result = await runHelper('attach', win);
     desktopAttached = Boolean(result.ok);
+    if (result.ok) {
+      if (win.isMinimized()) win.restore();
+      if (!win.isVisible()) win.showInactive();
+    }
     return result;
   }
 
@@ -83,8 +88,31 @@ async function applyDesktopMode(enabled) {
     await runHelper('detach', win);
     desktopAttached = false;
   }
+  win.setMinimizable(true);
   win.setSkipTaskbar(true);
   return { ok: true };
+}
+
+function protectDesktopWidget(win) {
+  win.on('minimize', (event) => {
+    if (!loadExtra().desktopMode) return;
+    event.preventDefault();
+    setTimeout(async () => {
+      if (win.isDestroyed()) return;
+      if (win.isMinimized()) win.restore();
+      if (!win.isVisible()) win.showInactive();
+      if (!desktopAttached) await applyDesktopMode(true);
+    }, 25);
+  });
+
+  win.on('hide', () => {
+    if (!loadExtra().desktopMode) return;
+    setTimeout(async () => {
+      if (win.isDestroyed() || !loadExtra().desktopMode) return;
+      if (!win.isVisible()) win.showInactive();
+      if (!desktopAttached) await applyDesktopMode(true);
+    }, 25);
+  });
 }
 
 function applyLock(value) {
@@ -114,6 +142,7 @@ app.whenReady().then(() => {
   setTimeout(async () => {
     const win = currentWindow();
     if (!win) return;
+    protectDesktopWidget(win);
     applyLock(Boolean(extra.lockWidget));
     if (extra.desktopMode) await applyDesktopMode(true);
   }, 500);
