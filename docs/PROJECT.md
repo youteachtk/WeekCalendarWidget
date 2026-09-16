@@ -28,3 +28,11 @@ Un widget de escritorio de Windows centrado en la **vista semanal**, de lectura 
 
 ## Calendarios detectados en Google
 En la conexión de Google Calendar disponible durante el desarrollo se detectaron únicamente el calendario principal y Festivos en México. Los calendarios que Business Calendar muestra como Local deben migrarse a Google para sincronizarse con Windows.
+
+
+## Regla para actualizaciones en Windows
+- El instalador debe detectar si **WeekCal Widget** está abierto antes de reemplazar archivos.
+- Si está abierto, debe informar al usuario y ofrecer **cerrar/terminar WeekCal desde el propio instalador y continuar** o **cancelar**.
+- No se debe depender de un botón visible de “Cerrar” dentro del widget para poder actualizarlo.
+- Después de una actualización normal, el instalador puede volver a abrir WeekCal.
+- La conexión de Google Calendar y la configuración del usuario deben conservarse entre versiones.
