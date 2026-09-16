@@ -189,8 +189,9 @@ async function performOAuth(credentials) {
         const redirectUri = `http://127.0.0.1:${server.address().port}/oauth2callback`;
         oauthClient = createOAuthClient(credentials, redirectUri);
         const { tokens } = await oauthClient.getToken(code);
-        oauthClient.setCredentials(tokens);
-        saveSecure('google-token.secure.json', tokens);
+        const storedTokens = { ...tokens, weekcalWriteEnabled: true };
+        oauthClient.setCredentials(storedTokens);
+        saveSecure('google-token.secure.json', storedTokens);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end('<html><body style="font-family:Segoe UI;padding:40px;background:#111;color:#eee"><h2>WeekCal autorizado</h2><p>Ya puedes cerrar esta pestaña y volver al widget.</p></body></html>');
         server.close();
@@ -242,8 +243,9 @@ async function authorizeGoogleWrite() {
 
 function tokenHasWriteScope() {
   const token = getTokenRecord();
+  if (token?.weekcalWriteEnabled === true) return true;
   const scope = String(token?.scope || '');
-  return scope.includes('/auth/calendar.events') || scope.includes('/auth/calendar ');
+  return scope.includes('/auth/calendar.events') || /\/auth\/calendar(?:\s|$)/.test(scope);
 }
 
 async function googleStatus() {

@@ -478,7 +478,7 @@ function openEventEditor(ev=null) {
 
   renderEditorCalendars(ev?.calendarId||"");
 
-  const base=ev?new Date(ev.start):defaultEditorDate();
+  const base=ev?(ev.allDay?new Date(String(ev.start).slice(0,10)+"T12:00:00"):new Date(ev.start)):defaultEditorDate();
   const start=ev?new Date(ev.start):new Date(base.getFullYear(),base.getMonth(),base.getDate(),9,0);
   const end=ev?new Date(ev.end):new Date(base.getFullYear(),base.getMonth(),base.getDate(),10,0);
 
@@ -563,11 +563,12 @@ async function saveEditorEvent() {
   $("eventSaveBtn").disabled=true;
   $("eventSaveBtn").textContent="Guardando…";
   try {
-    if (state.editorEvent) await api.updateEvent(payload);
+    const wasEditing=Boolean(state.editorEvent);
+    if (wasEditing) await api.updateEvent(payload);
     else await api.createEvent(payload);
     closeEventEditor();
     await refresh(false);
-    toast(state.editorEvent?"Evento actualizado":"Evento creado");
+    toast(wasEditing?"Evento actualizado":"Evento creado");
   } catch(e) {
     if (String(e.message).includes("WRITE_AUTH_REQUIRED")) {
       state.writeEnabled=false;
