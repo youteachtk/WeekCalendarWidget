@@ -19,7 +19,7 @@ on:
       - ".github/workflows/build-windows.yml"
 
 jobs:
-  validate:
+  native-validate:
     runs-on: windows-latest
     permissions:
       contents: read
@@ -30,6 +30,13 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Build desktop helper
         run: dotnet publish native/DesktopHost/DesktopHost.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o native/DesktopHost/publish
+
+  js-validate:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -37,7 +44,9 @@ jobs:
       - run: npm test
 
   package:
-    needs: validate
+    needs:
+      - native-validate
+      - js-validate
     runs-on: windows-latest
     permissions:
       contents: read
