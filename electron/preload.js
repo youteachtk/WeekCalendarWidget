@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('weekcal', {
   setReserveIconSpace: (value) => ipcRenderer.invoke('widget-extra:set-reserve-icons', value),
   setLock: (value) => ipcRenderer.invoke('widget-extra:set-lock', value),
   googleStatus: () => ipcRenderer.invoke('google:status'),
+  googleCopyClientId: () => ipcRenderer.invoke('google:copy-client-id'),
   googleConnect: () => ipcRenderer.invoke('google:connect'),
   googleSwitchAccount: () => ipcRenderer.invoke('google:switch-account'),
   googleAuthorizeWrite: () => ipcRenderer.invoke('google:authorize-write'),
