@@ -1,6 +1,6 @@
-# SUPERSEDED — private deployment design
+# ACTIVE — private deployment with zero JSON steps per installation
 
-> This document is retained for history only. It was superseded on 2026-09-21 by `2026-09-21-google-public-desktop-app-design.md`. WeekCal now targets unrestricted public installation with a production Google OAuth desktop client, no test-user allowlist, and no per-user OAuth files.
+> Reconfirmed on 2026-09-21. WeekCal remains a private/small-group application, but OAuth application credentials are configured once in the build pipeline. Installed users never select, upload, or store an OAuth JSON file manually.
 
 # Diseño: cuentas Google por usuario y firma privada para WeekCal
 
@@ -22,7 +22,7 @@ Incluido:
 - Mostrar el correo de la cuenta conectada.
 - Acciones de Cambiar cuenta y Desconectar.
 - Tokens OAuth almacenados localmente con Electron safeStorage.
-- Credenciales OAuth de la aplicación suministradas al build desde GitHub Actions Secrets, sin guardar el JSON en el repositorio.
+- Credenciales OAuth de la aplicación suministradas una sola vez al build: Client ID como GitHub Actions variable y Client Secret como GitHub Actions secret. El JSON original no se distribuye a los usuarios.
 - Firma Authenticode del instalador y ejecutables con un certificado privado de código.
 - Instalación manual del certificado público como confiable únicamente en las computadoras conocidas.
 - Pruebas de regresión para aislamiento de cuenta, cambio de cuenta, cierre de sesión y configuración de firma.
