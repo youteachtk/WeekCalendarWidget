@@ -58,3 +58,15 @@ test('icon reservation is verified after Explorer applies positions', () => {
   assert.match(source, /remainingOverlaps\s*=\s*0/, 'successful reservation must report zero remaining overlaps');
   assert.match(source, /safetyPaddingX/, 'reservation should keep a safety margin around the widget');
 });
+
+
+test('icon reservation derives the dominant desktop grid instead of trusting one icon', () => {
+  assert.match(source, /FindGridAnchor\s*\(/);
+  assert.match(source, /DominantModulo\s*\(/);
+  assert.match(source, /currentPositions\.Count\s*>\s*0\s*\?\s*currentPositions\s*:\s*state\.Positions/);
+});
+
+test('candidate icon cells must fit completely inside the desktop client area', () => {
+  assert.match(source, /x\s*\+\s*spacing\.X\s*<=\s*client\.Right/);
+  assert.match(source, /y\s*\+\s*spacing\.Y\s*<=\s*client\.Bottom/);
+});
