@@ -343,6 +343,30 @@ internal static class Program
             Bottom = Math.Min(bounds.Bottom, area.Bottom + padY)
         };
 
+    private static int DominantModulo(IEnumerable<int> values, int spacing)
+    {
+        if (spacing <= 0) return 0;
+        return values
+            .Select(value => ((value % spacing) + spacing) % spacing)
+            .GroupBy(value => value)
+            .OrderByDescending(group => group.Count())
+            .ThenBy(group => group.Key)
+            .Select(group => group.Key)
+            .FirstOrDefault();
+    }
+
+    private static (int X, int Y) FindGridAnchor(
+        IEnumerable<IconPosition> positions,
+        (int X, int Y) spacing)
+    {
+        var list = positions.ToList();
+        if (list.Count == 0) return (0, 0);
+        return (
+            DominantModulo(list.Select(p => p.X), spacing.X),
+            DominantModulo(list.Select(p => p.Y), spacing.Y)
+        );
+    }
+
     private static List<(int X, int Y)> BuildCandidateGrid(
         RECT client,
         (int X, int Y) spacing,
@@ -351,9 +375,9 @@ internal static class Program
         RECT exclusionArea)
     {
         var candidates = new List<(int X, int Y)>();
-        for (var x = anchorX; x < client.Right; x += spacing.X)
+        for (var x = anchorX; x + spacing.X <= client.Right; x += spacing.X)
         {
-            for (var y = anchorY; y < client.Bottom; y += spacing.Y)
+            for (var y = anchorY; y + spacing.Y <= client.Bottom; y += spacing.Y)
             {
                 if (x < client.Left || y < client.Top) continue;
                 if (CellIntersectsWidget(x, y, spacing.X, spacing.Y, exclusionArea)) continue;
@@ -494,19 +518,17 @@ internal static class Program
         };
 
         GetClientRect(listView, out var client);
-        var first = state.Positions
-            .OrderBy(p => p.X)
-            .ThenBy(p => p.Y)
-            .First();
-        var anchorX = ((first.X % spacing.X) + spacing.X) % spacing.X;
-        var anchorY = ((first.Y % spacing.Y) + spacing.Y) % spacing.Y;
+        var currentPositions = ReadPositions(listView)
+            .Where(p => p.Index < currentCount)
+            .ToList();
+        var anchor = FindGridAnchor(currentPositions.Count > 0 ? currentPositions : state.Positions, spacing);
 
         // Explorer can snap icon positions after LVM_SETITEMPOSITION32. Keep a half-cell
         // safety margin around WeekCal and verify the actual positions after moving.
         var safetyPaddingX = Math.Max(8, spacing.X / 2);
         var safetyPaddingY = Math.Max(8, spacing.Y / 2);
         var exclusionArea = ExpandAndClamp(widgetArea, safetyPaddingX, safetyPaddingY, client);
-        var candidates = BuildCandidateGrid(client, spacing, anchorX, anchorY, exclusionArea);
+        var candidates = BuildCandidateGrid(client, spacing, anchor.X, anchor.Y, exclusionArea);
 
         if (candidates.Count < Math.Min(currentCount, state.Positions.Count))
             throw new InvalidOperationException("No hay suficientes celdas libres para acomodar todos los iconos fuera de WeekCal.");
