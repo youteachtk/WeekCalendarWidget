@@ -47,7 +47,6 @@ jobs:
     needs:
       - native-validate
       - js-validate
-    if: ${{ vars.WEEKCAL_GOOGLE_CLIENT_ID != '' }}
     runs-on: windows-latest
     permissions:
       contents: read
@@ -68,12 +67,13 @@ jobs:
           WEEKCAL_GOOGLE_CLIENT_ID: ${{ vars.WEEKCAL_GOOGLE_CLIENT_ID }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:WEEKCAL_GOOGLE_CLIENT_ID)) {
-            throw "Missing WEEKCAL_GOOGLE_CLIENT_ID repository variable."
+            Write-Host "No packaged Google Client ID yet; building recovery-capable installer."
+          } else {
+            $config = @{
+              client_id = $env:WEEKCAL_GOOGLE_CLIENT_ID
+            } | ConvertTo-Json -Compress
+            Set-Content -Path "electron/google-app-config.generated.json" -Value $config -Encoding UTF8
           }
-          $config = @{
-            client_id = $env:WEEKCAL_GOOGLE_CLIENT_ID
-          } | ConvertTo-Json -Compress
-          Set-Content -Path "electron/google-app-config.generated.json" -Value $config -Encoding UTF8
       - run: npm run dist:win
       - name: Remove generated OAuth config
         if: always()
