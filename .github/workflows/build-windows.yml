@@ -19,18 +19,6 @@ on:
       - ".github/workflows/build-windows.yml"
 
 jobs:
-  runner-smoke:
-    runs-on: windows-latest
-    steps:
-      - run: echo WeekCal runner OK
-
-  checkout-smoke:
-    runs-on: windows-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-
   native-validate:
     runs-on: windows-latest
     permissions:
