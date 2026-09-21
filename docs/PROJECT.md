@@ -107,8 +107,9 @@ En la conexión de Google Calendar disponible durante el desarrollo se detectaro
 ## Private Google Calendar deployment direction (2026-09-21)
 - WeekCal remains a private/small-group application.
 - End users never provide OAuth JSON files or configure Google Cloud.
-- The WeekCal OAuth Desktop client is configured once in the build pipeline, not once per installation.
-- The build receives the Client ID as a GitHub Actions variable and the Client Secret as a GitHub Actions secret, then packages the app configuration automatically.
+- The existing WeekCal OAuth Desktop client is reused; it is not recreated per installation.
+- The build receives only the existing Client ID as a GitHub Actions variable and packages it automatically.
+- The old Client Secret/JSON is not required. On the original PC, WeekCal can recover the legacy Client ID from the encrypted `google-credentials.secure.json` left by the previous version.
 - Each installation stores only that user's own encrypted Google token locally.
 - The user experience is: install → Conectar con Google → choose authorized account → use WeekCal.
 - Disconnected installs remain empty until the user connects Google.
