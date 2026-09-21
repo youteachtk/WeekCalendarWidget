@@ -15,13 +15,20 @@ test('Google login no longer asks the user to choose an OAuth JSON file', () => 
   assert.match(html, /Conectar con Google/);
 });
 
-test('WeekCal OAuth app credentials are injected once during the Windows build', () => {
+test('WeekCal reuses one private Google desktop client ID for every installation', () => {
   assert.match(main, /google-app-config\.generated\.json/);
   assert.match(workflow, /WEEKCAL_GOOGLE_CLIENT_ID/);
-  assert.match(workflow, /WEEKCAL_GOOGLE_CLIENT_SECRET/);
   assert.match(workflow, /vars\.WEEKCAL_GOOGLE_CLIENT_ID/);
-  assert.match(workflow, /secrets\.WEEKCAL_GOOGLE_CLIENT_SECRET/);
+  assert.doesNotMatch(workflow, /WEEKCAL_GOOGLE_CLIENT_SECRET/);
   assert.match(workflow, /google-app-config\.generated\.json/);
+});
+
+test('private desktop OAuth uses PKCE and can migrate the legacy local client ID', () => {
+  assert.match(main, /generateCodeVerifierAsync\s*\(/);
+  assert.match(main, /CodeChallengeMethod\.S256/);
+  assert.match(main, /ClientAuthentication\.None/);
+  assert.match(main, /getLegacyCredentialsRecord/);
+  assert.match(main, /legacy\?\.client_id/);
 });
 
 test('installed users are never asked to provide OAuth credentials', () => {
