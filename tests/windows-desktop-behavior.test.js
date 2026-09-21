@@ -16,12 +16,13 @@ test('Windows 11 24H2+ uses the shell window as the desktop host', () => {
   );
 });
 
-test('desktop icons are reflowed around the entire widget exclusion area', () => {
-  assert.match(source, /ArrangeIconsAroundWidget\s*\(/, 'DesktopHost must have a full desktop-grid reflow path');
-  assert.match(
+test('desktop reservation moves only icons that actually intersect WeekCal', () => {
+  assert.match(source, /detectedOverlaps/);
+  assert.match(source, /CorrectRemainingOverlaps\s*\(/);
+  assert.doesNotMatch(
     source,
-    /var\s+moved\s*=\s*ArrangeIconsAroundWidget\(listView,\s*state\.Positions,\s*candidates,\s*currentCount\)/,
-    'all saved icon positions must be reflowed through free cells around the widget'
+    /ArrangeIconsAroundWidget\(listView,\s*state\.Positions/,
+    'reservation must not replay the old full-grid reflow snapshot before measuring overlaps'
   );
 });
 
@@ -69,4 +70,17 @@ test('icon reservation derives the dominant desktop grid instead of trusting one
 test('candidate icon cells must fit completely inside the desktop client area', () => {
   assert.match(source, /x\s*\+\s*spacing\.X\s*<=\s*client\.Right/);
   assert.match(source, /y\s*\+\s*spacing\.Y\s*<=\s*client\.Bottom/);
+});
+
+
+test('widget area is mapped directly from WeekCal client coordinates into the desktop list view', () => {
+  assert.match(source, /GetWidgetAreaInListView\s*\(/);
+  assert.match(source, /GetClientRect\(widget,\s*out var local\)/);
+  assert.match(source, /MapWindowPoints\(widget,\s*listView,\s*points,\s*2\)/);
+});
+
+test('old icon reservation snapshots are invalidated', () => {
+  assert.match(source, /public int Version \{ get; set; \} = 2/);
+  assert.match(source, /existing\.Version >= 2/);
+  assert.match(source, /recreateSnapshot/);
 });
