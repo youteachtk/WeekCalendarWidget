@@ -104,10 +104,11 @@ En la conexión de Google Calendar disponible durante el desarrollo se detectaro
 - Icon reservation now adds a safety margin, re-reads the positions Explorer actually applied, retries remaining overlaps, and only reports success when zero icon cells remain inside the reserved area.
 
 
-## Public Google Calendar application direction (2026-09-21)
-- WeekCal is no longer designed as a small private deployment. The target is a standalone Windows desktop app usable by any eligible Google Account.
+## Private Google Calendar deployment direction (2026-09-21)
+- WeekCal remains a private/small-group application.
 - End users never provide OAuth JSON files or configure Google Cloud.
-- WeekCal uses a bundled public Desktop OAuth Client ID, system-browser authorization, loopback callback, OAuth state validation, and PKCE S256.
-- No confidential client secret is required by the application build.
-- The Google OAuth project must be External + Production and complete the applicable Google brand/sensitive-scope verification before unrestricted public release.
+- The WeekCal OAuth Desktop client is configured once in the build pipeline, not once per installation.
+- The build receives the Client ID as a GitHub Actions variable and the Client Secret as a GitHub Actions secret, then packages the app configuration automatically.
+- Each installation stores only that user's own encrypted Google token locally.
+- The user experience is: install → Conectar con Google → choose authorized account → use WeekCal.
 - Disconnected installs remain empty until the user connects Google.
