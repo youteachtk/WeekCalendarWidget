@@ -64,15 +64,13 @@ jobs:
       - name: Prepare WeekCal Google OAuth config
         shell: pwsh
         env:
-          WEEKCAL_GOOGLE_CLIENT_ID: ${{ secrets.WEEKCAL_GOOGLE_CLIENT_ID }}
-          WEEKCAL_GOOGLE_CLIENT_SECRET: ${{ secrets.WEEKCAL_GOOGLE_CLIENT_SECRET }}
+          WEEKCAL_GOOGLE_CLIENT_ID: ${{ vars.WEEKCAL_GOOGLE_CLIENT_ID }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:WEEKCAL_GOOGLE_CLIENT_ID) -or [string]::IsNullOrWhiteSpace($env:WEEKCAL_GOOGLE_CLIENT_SECRET)) {
-            throw "Missing WEEKCAL_GOOGLE_CLIENT_ID or WEEKCAL_GOOGLE_CLIENT_SECRET repository secret."
+          if ([string]::IsNullOrWhiteSpace($env:WEEKCAL_GOOGLE_CLIENT_ID)) {
+            throw "Missing WEEKCAL_GOOGLE_CLIENT_ID repository variable."
           }
           $config = @{
             client_id = $env:WEEKCAL_GOOGLE_CLIENT_ID
-            client_secret = $env:WEEKCAL_GOOGLE_CLIENT_SECRET
           } | ConvertTo-Json -Compress
           Set-Content -Path "electron/google-app-config.generated.json" -Value $config -Encoding UTF8
       - run: npm run dist:win
