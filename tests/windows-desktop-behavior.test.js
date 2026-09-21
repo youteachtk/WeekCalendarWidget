@@ -61,10 +61,10 @@ test('icon reservation is verified after Explorer applies positions', () => {
 });
 
 
-test('icon reservation derives the dominant desktop grid instead of trusting one icon', () => {
+test('icon reservation derives the grid from the current Explorer positions', () => {
   assert.match(source, /FindGridAnchor\s*\(/);
   assert.match(source, /DominantModulo\s*\(/);
-  assert.match(source, /currentPositions\.Count\s*>\s*0\s*\?\s*currentPositions\s*:\s*state\.Positions/);
+  assert.match(source, /FindGridAnchor\(currentPositions,\s*spacing\)/);
 });
 
 test('candidate icon cells must fit completely inside the desktop client area', () => {
