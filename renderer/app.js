@@ -633,7 +633,12 @@ function bindUI() {
       toast("No se pudieron acomodar los iconos: "+response.result.error);
     } else {
       const moved=response.result?.moved;
-      toast(e.target.checked ? (Number.isFinite(moved) ? `Iconos acomodados: ${moved}` : "Espacio reservado para WeekCal") : "Posiciones de iconos restauradas");
+      const detected=response.result?.detectedOverlaps;
+      toast(e.target.checked
+        ? (Number.isFinite(moved) && Number.isFinite(detected)
+            ? `Iconos debajo detectados: ${detected} · movidos: ${moved}`
+            : (Number.isFinite(moved) ? `Iconos acomodados: ${moved}` : "Espacio reservado para WeekCal"))
+        : "Posiciones de iconos restauradas");
     }
   };
   $("lockWidgetToggle").onchange=async(e)=>{
