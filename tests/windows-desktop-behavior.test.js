@@ -46,7 +46,7 @@ test('reserved icon cells use their full width and height when avoiding WeekCal'
   assert.match(source, /CellIntersectsWidget\s*\(/, 'DesktopHost needs full-cell collision testing');
   assert.match(
     source,
-    /CellIntersectsWidget\(x,\s*y,\s*spacing\.X,\s*spacing\.Y,\s*widgetArea\)/,
+    /CellIntersectsWidget\(x,\s*y,\s*spacing\.X,\s*spacing\.Y,\s*(?:widgetArea|exclusionArea)\)/,
     'candidate icon cells must be rejected when any part of their width or height intersects WeekCal'
   );
 });
