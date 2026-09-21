@@ -47,6 +47,7 @@ jobs:
     needs:
       - native-validate
       - js-validate
+    if: ${{ vars.WEEKCAL_GOOGLE_CLIENT_ID != '' }}
     runs-on: windows-latest
     permissions:
       contents: read
@@ -64,7 +65,7 @@ jobs:
       - name: Prepare WeekCal Google OAuth config
         shell: pwsh
         env:
-          WEEKCAL_GOOGLE_CLIENT_ID: ${{ secrets.WEEKCAL_GOOGLE_CLIENT_ID }}
+          WEEKCAL_GOOGLE_CLIENT_ID: ${{ vars.WEEKCAL_GOOGLE_CLIENT_ID }}
           WEEKCAL_GOOGLE_CLIENT_SECRET: ${{ secrets.WEEKCAL_GOOGLE_CLIENT_SECRET }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:WEEKCAL_GOOGLE_CLIENT_ID) -or [string]::IsNullOrWhiteSpace($env:WEEKCAL_GOOGLE_CLIENT_SECRET)) {
