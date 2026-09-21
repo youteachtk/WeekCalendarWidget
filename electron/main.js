@@ -4,6 +4,7 @@ const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
 const { google } = require('googleapis');
+const { OAuth2Client, ClientAuthentication, CodeChallengeMethod } = require('google-auth-library');
 
 const APP_NAME = 'WeekCal Widget';
 const GOOGLE_SCOPES = [
@@ -161,18 +162,25 @@ function createWindow() {
 
 function getPackagedGoogleCredentials() {
   const generated = readJson(path.join(__dirname, 'google-app-config.generated.json'), null);
-  if (generated?.client_id && generated?.client_secret) {
-    return { client_id: generated.client_id, client_secret: generated.client_secret };
-  }
+  if (generated?.client_id) return { client_id: generated.client_id };
 
   const clientId = process.env.WEEKCAL_GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.WEEKCAL_GOOGLE_CLIENT_SECRET;
-  if (clientId && clientSecret) return { client_id: clientId, client_secret: clientSecret };
+  if (clientId) return { client_id: clientId };
   return null;
 }
 
+function getLegacyCredentialsRecord() {
+  return readSecure('google-credentials.secure.json');
+}
+
 function getCredentialsRecord() {
-  return getPackagedGoogleCredentials();
+  const packaged = getPackagedGoogleCredentials();
+  if (packaged) return packaged;
+
+  // Migration path for the PC that originally connected with the downloaded JSON.
+  // We only reuse its client_id; no JSON picker or client secret is required.
+  const legacy = getLegacyCredentialsRecord();
+  return legacy?.client_id ? { client_id: legacy.client_id } : null;
 }
 
 function getTokenRecord() {
@@ -193,7 +201,11 @@ function bc2ColorFromDescription(description = '') {
 }
 
 function createOAuthClient(credentials, redirectUri) {
-  const client = new google.auth.OAuth2(credentials.client_id, credentials.client_secret, redirectUri);
+  const client = new OAuth2Client({
+    clientId: credentials.client_id,
+    redirectUri,
+    clientAuthentication: ClientAuthentication.None
+  });
   const token = getTokenRecord();
   if (token) client.setCredentials(token);
   client.on('tokens', (tokens) => {
@@ -230,6 +242,7 @@ async function getConnectedGoogleEmail(client) {
 async function performOAuth(credentials, { selectAccount = true } = {}) {
   return new Promise((resolve, reject) => {
     const expectedState = crypto.randomBytes(24).toString('hex');
+    let pkce = null;
     let settled = false;
     const finish = (fn, value) => {
       if (settled) return;
@@ -251,9 +264,15 @@ async function performOAuth(credentials, { selectAccount = true } = {}) {
         if (err) throw new Error(err);
         if (!code) throw new Error('Google no devolvió el código de autorización.');
 
+        if (!pkce?.codeVerifier) throw new Error('No se pudo validar el inicio de sesión seguro con Google.');
         const redirectUri = `http://127.0.0.1:${server.address().port}/oauth2callback`;
         oauthClient = createOAuthClient(credentials, redirectUri);
-        const { tokens } = await oauthClient.getToken(code);
+        const { tokens } = await oauthClient.getToken({
+          code,
+          codeVerifier: pkce.codeVerifier,
+          redirect_uri: redirectUri,
+          client_id: credentials.client_id
+        });
         const storedTokens = { ...tokens, weekcalWriteEnabled: true };
         oauthClient.setCredentials(storedTokens);
         saveSecure('google-token.secure.json', storedTokens, { requireEncryption: true });
@@ -275,12 +294,14 @@ async function performOAuth(credentials, { selectAccount = true } = {}) {
         const port = server.address().port;
         const redirectUri = `http://127.0.0.1:${port}/oauth2callback`;
         oauthClient = createOAuthClient(credentials, redirectUri);
+        pkce = await oauthClient.generateCodeVerifierAsync();
         const authUrl = oauthClient.generateAuthUrl({
           access_type: 'offline',
           prompt: selectAccount ? 'select_account consent' : 'consent',
-          include_granted_scopes: true,
           scope: GOOGLE_SCOPES,
-          state: expectedState
+          state: expectedState,
+          code_challenge: pkce.codeChallenge,
+          code_challenge_method: CodeChallengeMethod.S256
         });
         await shell.openExternal(authUrl);
       } catch (e) {
@@ -296,7 +317,7 @@ async function performOAuth(credentials, { selectAccount = true } = {}) {
 async function connectGoogle() {
   const creds = getCredentialsRecord();
   if (!creds) {
-    throw new Error('Esta compilación de WeekCal no incluye la configuración OAuth de la aplicación.');
+    throw new Error('WeekCal no encontró el Client ID de su integración de Google.');
   }
   return performOAuth(creds, { selectAccount: true });
 }
@@ -310,7 +331,7 @@ async function switchGoogleAccount() {
 
 async function authorizeGoogleWrite() {
   const creds = getCredentialsRecord();
-  if (!creds) throw new Error('WeekCal no tiene configurada la conexión con Google.');
+  if (!creds) throw new Error('WeekCal no encontró el Client ID de su integración de Google.');
   return performOAuth(creds, { selectAccount: false });
 }
 
