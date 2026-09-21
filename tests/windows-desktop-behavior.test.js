@@ -50,3 +50,11 @@ test('reserved icon cells use their full width and height when avoiding WeekCal'
     'candidate icon cells must be rejected when any part of their width or height intersects WeekCal'
   );
 });
+
+
+test('icon reservation is verified after Explorer applies positions', () => {
+  assert.match(source, /CorrectRemainingOverlaps\s*\(/, 'DesktopHost must re-read and correct icon positions after the first pass');
+  assert.match(source, /ReadPositions\(listView\)/, 'verification must use the actual positions reported by Explorer');
+  assert.match(source, /remainingOverlaps\s*=\s*0/, 'successful reservation must report zero remaining overlaps');
+  assert.match(source, /safetyPaddingX/, 'reservation should keep a safety margin around the widget');
+});
