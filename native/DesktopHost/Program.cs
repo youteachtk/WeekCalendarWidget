@@ -58,6 +58,7 @@ internal static class Program
 
     private sealed class IconLayoutState
     {
+        public int Version { get; set; } = 2;
         public bool AutoArrange { get; set; }
         public List<IconPosition> Positions { get; set; } = new();
     }
@@ -343,6 +344,32 @@ internal static class Program
             Bottom = Math.Min(bounds.Bottom, area.Bottom + padY)
         };
 
+    private static RECT GetWidgetAreaInListView(IntPtr widget, IntPtr listView)
+    {
+        if (!GetClientRect(widget, out var local))
+            throw new InvalidOperationException("No se pudo obtener el tamaño real de WeekCal.");
+
+        var points = new[]
+        {
+            new POINT { X = local.Left, Y = local.Top },
+            new POINT { X = local.Right, Y = local.Bottom }
+        };
+        MapWindowPoints(widget, listView, points, 2);
+
+        var area = new RECT
+        {
+            Left = Math.Min(points[0].X, points[1].X),
+            Top = Math.Min(points[0].Y, points[1].Y),
+            Right = Math.Max(points[0].X, points[1].X),
+            Bottom = Math.Max(points[0].Y, points[1].Y)
+        };
+
+        if (area.Right <= area.Left || area.Bottom <= area.Top)
+            throw new InvalidOperationException("El área calculada de WeekCal no es válida.");
+
+        return area;
+    }
+
     private static int DominantModulo(IEnumerable<int> values, int spacing)
     {
         if (spacing <= 0) return 0;
@@ -470,81 +497,113 @@ internal static class Program
     private static string ReserveIcons(IntPtr widget, string statePath)
     {
         var listView = FindDesktopListView();
-        if (listView == IntPtr.Zero) throw new InvalidOperationException("No se encontró la vista de iconos del escritorio.");
+        if (listView == IntPtr.Zero)
+            throw new InvalidOperationException("No se encontró la vista de iconos del escritorio.");
+
+        var currentCount = SendMessage(listView, LVM_GETITEMCOUNT, IntPtr.Zero, IntPtr.Zero).ToInt32();
+        var currentPositions = ReadPositions(listView)
+            .Where(p => p.Index < currentCount)
+            .ToList();
 
         IconLayoutState state;
+        var recreateSnapshot = true;
         if (File.Exists(statePath))
         {
-            state = JsonSerializer.Deserialize<IconLayoutState>(File.ReadAllText(statePath)) ?? new IconLayoutState();
+            try
+            {
+                var existing = JsonSerializer.Deserialize<IconLayoutState>(File.ReadAllText(statePath));
+                if (existing is not null && existing.Version >= 2 && existing.Positions.Count > 0)
+                {
+                    state = existing;
+                    recreateSnapshot = false;
+                }
+                else
+                {
+                    state = new IconLayoutState();
+                }
+            }
+            catch
+            {
+                state = new IconLayoutState();
+            }
         }
         else
         {
+            state = new IconLayoutState();
+        }
+
+        if (recreateSnapshot)
+        {
             state = new IconLayoutState
             {
+                Version = 2,
                 AutoArrange = IsAutoArrange(listView),
-                Positions = ReadPositions(listView)
+                Positions = currentPositions
+                    .Select(p => new IconPosition { Index = p.Index, X = p.X, Y = p.Y })
+                    .ToList()
             };
             var dir = Path.GetDirectoryName(statePath);
             if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
             File.WriteAllText(statePath, JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }));
         }
 
-        if (state.Positions.Count == 0)
-            return JsonSerializer.Serialize(new { moved = 0, message = "No hay iconos que acomodar." });
+        if (currentPositions.Count == 0)
+            return JsonSerializer.Serialize(new { moved = 0, detectedOverlaps = 0, message = "No hay iconos que acomodar." });
 
         if (IsAutoArrange(listView)) SetAutoArrange(listView, false);
 
-        var currentCount = SendMessage(listView, LVM_GETITEMCOUNT, IntPtr.Zero, IntPtr.Zero).ToInt32();
-        foreach (var p in state.Positions.Where(p => p.Index < currentCount))
-            SetPosition(listView, p.Index, p.X, p.Y);
-
-        if (!GetWindowRect(widget, out var widgetRect))
-            throw new InvalidOperationException("No se pudo obtener el área del widget.");
-
-        var points = new[]
-        {
-            new POINT { X = widgetRect.Left, Y = widgetRect.Top },
-            new POINT { X = widgetRect.Right, Y = widgetRect.Bottom }
-        };
-        MapWindowPoints(IntPtr.Zero, listView, points, 2);
-
-        var spacing = GetSpacing(listView);
-        var widgetArea = new RECT
-        {
-            Left = Math.Min(points[0].X, points[1].X),
-            Top = Math.Min(points[0].Y, points[1].Y),
-            Right = Math.Max(points[0].X, points[1].X),
-            Bottom = Math.Max(points[0].Y, points[1].Y)
-        };
-
+        var widgetArea = GetWidgetAreaInListView(widget, listView);
         GetClientRect(listView, out var client);
-        var currentPositions = ReadPositions(listView)
-            .Where(p => p.Index < currentCount)
-            .ToList();
-        var anchor = FindGridAnchor(currentPositions.Count > 0 ? currentPositions : state.Positions, spacing);
+        var spacing = GetSpacing(listView);
 
-        // Explorer can snap icon positions after LVM_SETITEMPOSITION32. Keep a half-cell
-        // safety margin around WeekCal and verify the actual positions after moving.
-        var safetyPaddingX = Math.Max(8, spacing.X / 2);
-        var safetyPaddingY = Math.Max(8, spacing.Y / 2);
+        var safetyPaddingX = Math.Max(8, spacing.X / 3);
+        var safetyPaddingY = Math.Max(8, spacing.Y / 3);
         var exclusionArea = ExpandAndClamp(widgetArea, safetyPaddingX, safetyPaddingY, client);
+
+        var anchor = FindGridAnchor(currentPositions, spacing);
         var candidates = BuildCandidateGrid(client, spacing, anchor.X, anchor.Y, exclusionArea);
 
-        if (candidates.Count < Math.Min(currentCount, state.Positions.Count))
-            throw new InvalidOperationException("No hay suficientes celdas libres para acomodar todos los iconos fuera de WeekCal.");
+        var detectedOverlaps = currentPositions
+            .Count(p => CellIntersectsWidget(p.X, p.Y, spacing.X, spacing.Y, exclusionArea));
 
-        var moved = ArrangeIconsAroundWidget(listView, state.Positions, candidates, currentCount);
-        var correction = CorrectRemainingOverlaps(listView, candidates, currentCount, spacing, exclusionArea);
-        moved += correction.Moved;
+        if (detectedOverlaps == 0)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                moved = 0,
+                verified = true,
+                detectedOverlaps = 0,
+                remainingOverlaps = 0,
+                widgetArea,
+                exclusionArea,
+                spacingX = spacing.X,
+                spacingY = spacing.Y,
+                currentCount
+            });
+        }
+
+        var correction = CorrectRemainingOverlaps(
+            listView,
+            candidates,
+            currentCount,
+            spacing,
+            exclusionArea);
 
         if (correction.Remaining > 0)
-            throw new InvalidOperationException($"Explorer dejó {correction.Remaining} iconos dentro del área reservada después de verificar el reacomodo.");
+            throw new InvalidOperationException(
+                $"Explorer dejó {correction.Remaining} iconos dentro del área reservada después de verificar el reacomodo.");
 
         return JsonSerializer.Serialize(new
         {
-            moved,
+            moved = correction.Moved,
             verified = true,
+            detectedOverlaps,
             remainingOverlaps = 0,
+            widgetArea,
+            exclusionArea,
+            spacingX = spacing.X,
+            spacingY = spacing.Y,
+            currentCount,
             safetyPaddingX,
             safetyPaddingY,
             autoArrangeWasEnabled = state.AutoArrange
