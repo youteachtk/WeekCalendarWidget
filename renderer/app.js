@@ -103,36 +103,6 @@ function applyTheme() {
   document.body.classList.toggle('desktop-mode', Boolean(state.extra.desktopMode));
 }
 
-function demoEvents(start) {
-  const make = (day,h1,m1,h2,m2,title,color,location="") => ({
-    id: Math.random().toString(36).slice(2),
-    calendarId: 'Demo',
-    calendarName: 'Demo',
-    title,
-    color,
-    foreground: '#fff',
-    start: new Date(start.getFullYear(),start.getMonth(),start.getDate()+day,h1,m1).toISOString(),
-    end: new Date(start.getFullYear(),start.getMonth(),start.getDate()+day,h2,m2).toISOString(),
-    allDay:false,
-    location
-  });
-  return [
-    make(0,13,0,14,0,"Robótica","#2874f0","Q3"),
-    make(1,8,0,9,0,"Control","#087a1d","Q5"),
-    make(1,12,0,13,0,"IA","#ef5b0c","AE2"),
-    make(1,13,0,14,0,"Robótica","#2874f0","Q3"),
-    make(1,14,0,15,0,"MovApps","#8424e8","AE2"),
-    make(2,12,0,14,0,"Labo IA","#ff8f10","AE2"),
-    make(2,15,0,17,0,"Labo Robótica","#2099ef","LM1"),
-    make(3,9,0,11,0,"Labo Ctrl","#29995d","Y6"),
-    make(3,12,0,13,0,"Examen","#e2232c"),
-    make(3,14,0,15,0,"Lab MovApps","#9b30df","AE2"),
-    make(4,8,0,9,0,"Control","#087a1d","Q5"),
-    make(4,12,0,13,0,"IA","#ef5b0c","AE2"),
-    make(4,13,0,14,0,"Robótica","#2874f0","Q3")
-  ];
-}
-
 function layoutEvents(events) {
   const sorted = [...events].sort((a,b)=>new Date(a.start)-new Date(b.start));
   const groups=[]; let group=[], groupEnd=-Infinity;
@@ -355,7 +325,7 @@ async function updateGoogleState() {
   $("googleDisconnected").classList.toggle("hidden",state.connected);
   $("googleConnected").classList.toggle("hidden",!state.connected);
   $("syncStatus").className=state.connected?"sync-status ok":"sync-status";
-  $("syncText").textContent=state.connected?"Google":"Demo";
+  $("syncText").textContent=state.connected?"Google":"Sin conectar";
   $("googleAccountEmail").textContent=state.accountEmail||"Cuenta conectada";
   if (state.connected) {
     try {
@@ -386,13 +356,13 @@ async function refresh(notify=false) {
       $("syncText").textContent="Google";
       if (notify) toast("Calendario actualizado");
     } else {
-      state.events=demoEvents(week);
+      state.events=[];
     }
   } catch (e) {
     $("syncStatus").className="sync-status err";
     $("syncText").textContent="Error";
     toast(e.message||"Error al actualizar");
-    if (!state.events.length) state.events=demoEvents(week);
+    state.events=[];
   } finally {
     state.busy=false;
     render();
