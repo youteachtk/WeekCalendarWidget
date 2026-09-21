@@ -71,3 +71,19 @@ test('disconnected empty state asks the user to connect Google instead of showin
   assert.match(html, /id="emptyStateConnectGoogle"/);
   assert.match(renderer, /disconnectedEmptyState/);
 });
+
+
+test('legacy Google client ID can be recovered without exposing the old secret', () => {
+  assert.match(main, /getLegacyCredentialsRecord/);
+  assert.match(main, /clientIdRecoverable/);
+  assert.match(main, /google:copy-client-id/);
+  assert.match(preload, /googleCopyClientId/);
+  assert.match(html, /id="legacyGoogleRecovery"/);
+  assert.match(html, /id="copyGoogleClientId"/);
+  assert.match(renderer, /googleCopyClientId/);
+});
+
+test('Windows installer can be built before the recovered client ID is added to GitHub', () => {
+  assert.match(workflow, /building recovery-capable installer/i);
+  assert.doesNotMatch(workflow, /if:\s*\$\{\{\s*vars\.WEEKCAL_GOOGLE_CLIENT_ID/);
+});
