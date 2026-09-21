@@ -31,8 +31,26 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      - name: Prepare WeekCal Google OAuth config
+        shell: pwsh
+        env:
+          WEEKCAL_GOOGLE_CLIENT_ID: ${{ secrets.WEEKCAL_GOOGLE_CLIENT_ID }}
+          WEEKCAL_GOOGLE_CLIENT_SECRET: ${{ secrets.WEEKCAL_GOOGLE_CLIENT_SECRET }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WEEKCAL_GOOGLE_CLIENT_ID) -or [string]::IsNullOrWhiteSpace($env:WEEKCAL_GOOGLE_CLIENT_SECRET)) {
+            throw "Missing WEEKCAL_GOOGLE_CLIENT_ID or WEEKCAL_GOOGLE_CLIENT_SECRET repository secret."
+          }
+          $config = @{
+            client_id = $env:WEEKCAL_GOOGLE_CLIENT_ID
+            client_secret = $env:WEEKCAL_GOOGLE_CLIENT_SECRET
+          } | ConvertTo-Json -Compress
+          Set-Content -Path "electron/google-app-config.generated.json" -Value $config -Encoding UTF8
       - run: npm test
       - run: npm run dist:win
+      - name: Remove generated OAuth config
+        if: always()
+        shell: pwsh
+        run: Remove-Item "electron/google-app-config.generated.json" -Force -ErrorAction SilentlyContinue
       - uses: actions/upload-artifact@v4
         with:
           name: WeekCal-Windows-Installer
