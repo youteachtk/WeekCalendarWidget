@@ -91,3 +91,14 @@ En la conexión de Google Calendar disponible durante el desarrollo se detectaro
 - Existing Electron protections (setMinimizable(false), minimize/hide restoration) remain as a second layer.
 - Icon reservation previously tested only an icon's anchor point against the widget area. LVM_GETITEMPOSITION gives the item position, while the icon/label occupies a full grid cell. This allowed an anchor to sit just outside WeekCal while part of the icon cell still overlapped the widget.
 - Candidate positions now reject the entire icon grid cell (spacing.X x spacing.Y) when any part of that cell intersects WeekCal's full mapped width/height.
+
+
+## 0.5.0 account sign-in and verified icon reservation
+- A disconnected installation no longer renders the old hardcoded demo timetable. The weekly grid remains empty until a Google account is connected.
+- The Google Calendar section uses a normal **Conectar con Google** flow. End users do not select OAuth JSON files.
+- The Windows build injects WeekCal's application OAuth client from GitHub Actions secrets; user tokens stay local to each PC.
+- The connected Google account email is shown in Settings, with **Cambiar cuenta** and **Desconectar** actions.
+- Changing or disconnecting the Google account clears the locally selected calendar IDs so data from different accounts is not mixed.
+- OAuth now uses a random state value and requests only identity plus Calendar scopes needed by WeekCal.
+- Persisted Google tokens require Electron safeStorage.
+- Icon reservation now adds a safety margin, re-reads the positions Explorer actually applied, retries remaining overlaps, and only reports success when zero icon cells remain inside the reserved area.
