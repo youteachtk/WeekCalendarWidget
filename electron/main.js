@@ -7,6 +7,8 @@ const { google } = require('googleapis');
 
 const APP_NAME = 'WeekCal Widget';
 const GOOGLE_SCOPES = [
+  'openid',
+  'email',
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/calendar.calendarlist.readonly'
 ];
@@ -61,10 +63,13 @@ function saveSettings(patch = {}) {
   return settings;
 }
 
-function protectJson(obj) {
+function protectJson(obj, { requireEncryption = false } = {}) {
   const raw = JSON.stringify(obj);
   if (safeStorage.isEncryptionAvailable()) {
     return { encrypted: true, value: safeStorage.encryptString(raw).toString('base64') };
+  }
+  if (requireEncryption) {
+    throw new Error('Windows no ofrece almacenamiento seguro para conservar la sesión de Google.');
   }
   return { encrypted: false, value: Buffer.from(raw, 'utf8').toString('base64') };
 }
@@ -78,8 +83,8 @@ function unprotectJson(record) {
   return JSON.parse(raw);
 }
 
-function saveSecure(name, obj) {
-  writeJson(userFile(name), protectJson(obj));
+function saveSecure(name, obj, options = {}) {
+  writeJson(userFile(name), protectJson(obj, options));
 }
 
 function readSecure(name) {
@@ -142,18 +147,28 @@ function createWindow() {
   mainWindow.on('resize', rememberBounds);
 }
 
-function getCredentialsRecord() {
+function getPackagedGoogleCredentials() {
+  const generated = readJson(path.join(__dirname, 'google-app-config.generated.json'), null);
+  if (generated?.client_id && generated?.client_secret) {
+    return { client_id: generated.client_id, client_secret: generated.client_secret };
+  }
+
+  const clientId = process.env.WEEKCAL_GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.WEEKCAL_GOOGLE_CLIENT_SECRET;
+  if (clientId && clientSecret) return { client_id: clientId, client_secret: clientSecret };
+  return null;
+}
+
+function getLegacyCredentialsRecord() {
   return readSecure('google-credentials.secure.json');
+}
+
+function getCredentialsRecord() {
+  return getPackagedGoogleCredentials() || getLegacyCredentialsRecord();
 }
 
 function getTokenRecord() {
   return readSecure('google-token.secure.json');
-}
-
-function normalizeClientConfig(json) {
-  const cfg = json.installed || json.web;
-  if (!cfg?.client_id || !cfg?.client_secret) throw new Error('El archivo no parece ser una credencial OAuth de Google válida.');
-  return { client_id: cfg.client_id, client_secret: cfg.client_secret };
 }
 
 function bc2ColorFromDescription(description = '') {
@@ -175,7 +190,7 @@ function createOAuthClient(credentials, redirectUri) {
   if (token) client.setCredentials(token);
   client.on('tokens', (tokens) => {
     const merged = { ...(getTokenRecord() || {}), ...tokens };
-    saveSecure('google-token.secure.json', merged);
+    saveSecure('google-token.secure.json', merged, { requireEncryption: true });
   });
   return client;
 }
@@ -188,8 +203,33 @@ async function ensureOAuthClient() {
   return oauthClient;
 }
 
-async function performOAuth(credentials) {
+async function getConnectedGoogleEmail(client) {
+  try {
+    const oauth2 = google.oauth2({ version: 'v2', auth: client });
+    const res = await oauth2.userinfo.get();
+    if (res.data.email) return res.data.email;
+  } catch {}
+
+  try {
+    const cal = google.calendar({ version: 'v3', auth: client });
+    const res = await cal.calendarList.list({ maxResults: 250, showHidden: true });
+    return (res.data.items || []).find(item => item.primary)?.id || '';
+  } catch {
+    return '';
+  }
+}
+
+async function performOAuth(credentials, { selectAccount = true } = {}) {
   return new Promise((resolve, reject) => {
+    const expectedState = crypto.randomBytes(24).toString('hex');
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      try { server.close(); } catch {}
+      fn(value);
+    };
+
     const server = http.createServer(async (req, res) => {
       try {
         const u = new URL(req.url, 'http://127.0.0.1');
@@ -198,61 +238,72 @@ async function performOAuth(credentials) {
         }
         const code = u.searchParams.get('code');
         const err = u.searchParams.get('error');
+        const returnedState = u.searchParams.get('state');
+        if (returnedState !== expectedState) throw new Error('La respuesta de Google no corresponde al inicio de sesión actual.');
         if (err) throw new Error(err);
         if (!code) throw new Error('Google no devolvió el código de autorización.');
+
         const redirectUri = `http://127.0.0.1:${server.address().port}/oauth2callback`;
         oauthClient = createOAuthClient(credentials, redirectUri);
         const { tokens } = await oauthClient.getToken(code);
         const storedTokens = { ...tokens, weekcalWriteEnabled: true };
         oauthClient.setCredentials(storedTokens);
-        saveSecure('google-token.secure.json', storedTokens);
+        saveSecure('google-token.secure.json', storedTokens, { requireEncryption: true });
+        saveSettings({ selectedCalendars: [] });
+        const accountEmail = await getConnectedGoogleEmail(oauthClient);
+
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end('<html><body style="font-family:Segoe UI;padding:40px;background:#111;color:#eee"><h2>WeekCal autorizado</h2><p>Ya puedes cerrar esta pestaña y volver al widget.</p></body></html>');
-        server.close();
-        resolve({ connected: true, writeEnabled: true });
+        res.end('<html><body style="font-family:Segoe UI;padding:40px;background:#111;color:#eee"><h2>WeekCal autorizado</h2><p>La cuenta quedó conectada. Ya puedes cerrar esta pestaña y volver al widget.</p></body></html>');
+        finish(resolve, { connected: true, writeEnabled: true, accountEmail });
       } catch (e) {
         res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end(e.message);
-        server.close();
-        reject(e);
+        finish(reject, e);
       }
     });
 
     server.listen(0, '127.0.0.1', async () => {
-      const port = server.address().port;
-      const redirectUri = `http://127.0.0.1:${port}/oauth2callback`;
-      oauthClient = createOAuthClient(credentials, redirectUri);
-      const authUrl = oauthClient.generateAuthUrl({
-        access_type: 'offline',
-        prompt: 'consent',
-        include_granted_scopes: true,
-        scope: GOOGLE_SCOPES
-      });
-      await shell.openExternal(authUrl);
+      try {
+        const port = server.address().port;
+        const redirectUri = `http://127.0.0.1:${port}/oauth2callback`;
+        oauthClient = createOAuthClient(credentials, redirectUri);
+        const authUrl = oauthClient.generateAuthUrl({
+          access_type: 'offline',
+          prompt: selectAccount ? 'select_account consent' : 'consent',
+          include_granted_scopes: true,
+          scope: GOOGLE_SCOPES,
+          state: expectedState
+        });
+        await shell.openExternal(authUrl);
+      } catch (e) {
+        finish(reject, e);
+      }
     });
 
-    server.on('error', reject);
+    server.on('error', e => finish(reject, e));
+    setTimeout(() => finish(reject, new Error('El inicio de sesión con Google expiró. Inténtalo de nuevo.')), 180000);
   });
 }
 
 async function connectGoogle() {
-  const picked = await dialog.showOpenDialog(mainWindow, {
-    title: 'Selecciona las credenciales OAuth de Google',
-    properties: ['openFile'],
-    filters: [{ name: 'Google OAuth JSON', extensions: ['json'] }]
-  });
-  if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
+  const creds = getCredentialsRecord();
+  if (!creds) {
+    throw new Error('Esta compilación de WeekCal no incluye la configuración OAuth de la aplicación.');
+  }
+  return performOAuth(creds, { selectAccount: true });
+}
 
-  const parsed = JSON.parse(fs.readFileSync(picked.filePaths[0], 'utf8'));
-  const creds = normalizeClientConfig(parsed);
-  saveSecure('google-credentials.secure.json', creds);
-  return performOAuth(creds);
+async function switchGoogleAccount() {
+  oauthClient = null;
+  try { fs.unlinkSync(userFile('google-token.secure.json')); } catch {}
+  saveSettings({ selectedCalendars: [] });
+  return connectGoogle();
 }
 
 async function authorizeGoogleWrite() {
   const creds = getCredentialsRecord();
-  if (!creds) throw new Error('Primero conecta Google Calendar desde Configuración.');
-  return performOAuth(creds);
+  if (!creds) throw new Error('WeekCal no tiene configurada la conexión con Google.');
+  return performOAuth(creds, { selectAccount: false });
 }
 
 function tokenHasWriteScope() {
@@ -270,7 +321,8 @@ async function googleStatus() {
     const client = await ensureOAuthClient();
     const cal = google.calendar({ version: 'v3', auth: client });
     const res = await cal.calendarList.list({ maxResults: 1 });
-    return { connected: true, calendarsKnown: Boolean(res.data.items?.length), writeEnabled: tokenHasWriteScope() };
+    const accountEmail = await getConnectedGoogleEmail(client);
+    return { connected: true, calendarsKnown: Boolean(res.data.items?.length), writeEnabled: tokenHasWriteScope(), accountEmail };
   } catch (e) {
     return { connected: false, error: e.message };
   }
@@ -514,12 +566,12 @@ ipcMain.handle('widget:open-link', (_e, url) => shell.openExternal(url));
 
 ipcMain.handle('google:status', googleStatus);
 ipcMain.handle('google:connect', connectGoogle);
+ipcMain.handle('google:switch-account', switchGoogleAccount);
 ipcMain.handle('google:authorize-write', authorizeGoogleWrite);
 ipcMain.handle('google:disconnect', () => {
   oauthClient = null;
-  for (const name of ['google-token.secure.json', 'google-credentials.secure.json']) {
-    try { fs.unlinkSync(userFile(name)); } catch {}
-  }
+  try { fs.unlinkSync(userFile('google-token.secure.json')); } catch {}
+  saveSettings({ selectedCalendars: [] });
   return { connected: false };
 });
 ipcMain.handle('google:list-calendars', listGoogleCalendars);
