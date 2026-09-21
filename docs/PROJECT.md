@@ -102,3 +102,12 @@ En la conexión de Google Calendar disponible durante el desarrollo se detectaro
 - OAuth now uses a random state value and requests only identity plus Calendar scopes needed by WeekCal.
 - Persisted Google tokens require Electron safeStorage.
 - Icon reservation now adds a safety margin, re-reads the positions Explorer actually applied, retries remaining overlaps, and only reports success when zero icon cells remain inside the reserved area.
+
+
+## Public Google Calendar application direction (2026-09-21)
+- WeekCal is no longer designed as a small private deployment. The target is a standalone Windows desktop app usable by any eligible Google Account.
+- End users never provide OAuth JSON files or configure Google Cloud.
+- WeekCal uses a bundled public Desktop OAuth Client ID, system-browser authorization, loopback callback, OAuth state validation, and PKCE S256.
+- No confidential client secret is required by the application build.
+- The Google OAuth project must be External + Production and complete the applicable Google brand/sensitive-scope verification before unrestricted public release.
+- Disconnected installs remain empty until the user connects Google.
