@@ -1,3 +1,7 @@
+# SUPERSEDED — public deployment experiment
+
+> Abandoned on 2026-09-21. WeekCal returned to the private/small-group OAuth design. This file is retained only as history and must not drive implementation.
+
 # WeekCal public Google Calendar application design — 2026-09-21
 
 This document supersedes the earlier small-known-group OAuth design for WeekCal.
