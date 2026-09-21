@@ -77,9 +77,15 @@ function protectJson(obj, { requireEncryption = false } = {}) {
 function unprotectJson(record) {
   if (!record?.value) return null;
   const data = Buffer.from(record.value, 'base64');
-  const raw = record.encrypted && safeStorage.isEncryptionAvailable()
-    ? safeStorage.decryptString(data)
-    : data.toString('utf8');
+  let raw;
+  if (record.encrypted) {
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('Windows no ofrece almacenamiento seguro para leer la sesión de Google.');
+    }
+    raw = safeStorage.decryptString(data);
+  } else {
+    raw = data.toString('utf8');
+  }
   return JSON.parse(raw);
 }
 
@@ -87,8 +93,14 @@ function saveSecure(name, obj, options = {}) {
   writeJson(userFile(name), protectJson(obj, options));
 }
 
-function readSecure(name) {
-  try { return unprotectJson(readJson(userFile(name), null)); } catch { return null; }
+function readSecure(name, { requireEncryption = false } = {}) {
+  try {
+    const record = readJson(userFile(name), null);
+    if (requireEncryption && record?.encrypted !== true) return null;
+    return unprotectJson(record);
+  } catch {
+    return null;
+  }
 }
 
 function defaultBounds() {
@@ -168,7 +180,7 @@ function getCredentialsRecord() {
 }
 
 function getTokenRecord() {
-  return readSecure('google-token.secure.json');
+  return readSecure('google-token.secure.json', { requireEncryption: true });
 }
 
 function bc2ColorFromDescription(description = '') {
