@@ -324,6 +324,7 @@ async function updateGoogleState() {
   state.accountEmail=String(status.accountEmail||'');
   $("googleDisconnected").classList.toggle("hidden",state.connected);
   $("googleConnected").classList.toggle("hidden",!state.connected);
+  $("legacyGoogleRecovery").classList.toggle("hidden",!status.clientIdRecoverable);
   $("disconnectedEmptyState").classList.toggle("hidden",state.connected);
   $("syncStatus").className=state.connected?"sync-status ok":"sync-status";
   $("syncText").textContent=state.connected?"Google":"Sin conectar";
@@ -658,6 +659,15 @@ function bindUI() {
   };
   $("connectGoogle").onclick=connectGoogleAccount;
   $("emptyStateConnectGoogle").onclick=connectGoogleAccount;
+
+  $("copyGoogleClientId").onclick=async()=>{
+    try {
+      await api.googleCopyClientId();
+      toast("Client ID de WeekCal copiado");
+    } catch(e) {
+      toast("No se pudo recuperar la integración: "+e.message);
+    }
+  };
 
   $("switchGoogleAccount").onclick=async()=>{
     try {
