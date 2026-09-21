@@ -1,3 +1,7 @@
+# SUPERSEDED — private deployment design
+
+> This document is retained for history only. It was superseded on 2026-09-21 by `2026-09-21-google-public-desktop-app-design.md`. WeekCal now targets unrestricted public installation with a production Google OAuth desktop client, no test-user allowlist, and no per-user OAuth files.
+
 # Diseño: cuentas Google por usuario y firma privada para WeekCal
 
 Fecha: 2026-09-18
