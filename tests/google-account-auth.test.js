@@ -48,3 +48,11 @@ test('disconnected WeekCal contains no bundled demo timetable', () => {
   assert.match(renderer, /state\.events\s*=\s*\[\]/);
   assert.match(renderer, /Sin conectar/);
 });
+
+
+test('disconnected empty state asks the user to connect Google instead of showing sample events', () => {
+  assert.match(html, /id="disconnectedEmptyState"/);
+  assert.match(html, /Conecta Google Calendar/);
+  assert.match(html, /id="emptyStateConnectGoogle"/);
+  assert.match(renderer, /disconnectedEmptyState/);
+});
