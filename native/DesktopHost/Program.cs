@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Threading;
 
 internal static class Program
 {
@@ -333,6 +334,37 @@ internal static class Program
            y < widgetArea.Bottom &&
            y + height > widgetArea.Top;
 
+    private static RECT ExpandAndClamp(RECT area, int padX, int padY, RECT bounds)
+        => new RECT
+        {
+            Left = Math.Max(bounds.Left, area.Left - padX),
+            Top = Math.Max(bounds.Top, area.Top - padY),
+            Right = Math.Min(bounds.Right, area.Right + padX),
+            Bottom = Math.Min(bounds.Bottom, area.Bottom + padY)
+        };
+
+    private static List<(int X, int Y)> BuildCandidateGrid(
+        RECT client,
+        (int X, int Y) spacing,
+        int anchorX,
+        int anchorY,
+        RECT exclusionArea)
+    {
+        var candidates = new List<(int X, int Y)>();
+        for (var x = anchorX; x < client.Right; x += spacing.X)
+        {
+            for (var y = anchorY; y < client.Bottom; y += spacing.Y)
+            {
+                if (x < client.Left || y < client.Top) continue;
+                if (CellIntersectsWidget(x, y, spacing.X, spacing.Y, exclusionArea)) continue;
+                candidates.Add((x, y));
+            }
+        }
+        return candidates;
+    }
+
+    private static string PositionKey(int x, int y) => $"{x}:{y}";
+
     private static int ArrangeIconsAroundWidget(
         IntPtr listView,
         IEnumerable<IconPosition> positions,
@@ -357,6 +389,58 @@ internal static class Program
         }
 
         return moved;
+    }
+
+    private static (int Moved, int Remaining) CorrectRemainingOverlaps(
+        IntPtr listView,
+        IReadOnlyList<(int X, int Y)> candidates,
+        int currentCount,
+        (int X, int Y) spacing,
+        RECT exclusionArea)
+    {
+        var moved = 0;
+
+        for (var pass = 0; pass < 4; pass++)
+        {
+            Thread.Sleep(40);
+            var current = ReadPositions(listView)
+                .Where(p => p.Index < currentCount)
+                .ToList();
+
+            var overlaps = current
+                .Where(p => CellIntersectsWidget(p.X, p.Y, spacing.X, spacing.Y, exclusionArea))
+                .ToList();
+
+            if (overlaps.Count == 0) return (moved, 0);
+
+            var used = new HashSet<string>(
+                current
+                    .Where(p => !CellIntersectsWidget(p.X, p.Y, spacing.X, spacing.Y, exclusionArea))
+                    .Select(p => PositionKey(p.X, p.Y)));
+
+            foreach (var p in overlaps)
+            {
+                (int X, int Y)? target = null;
+                foreach (var candidate in candidates
+                    .OrderBy(c => Math.Abs(c.X - p.X) + Math.Abs(c.Y - p.Y)))
+                {
+                    if (used.Contains(PositionKey(candidate.X, candidate.Y))) continue;
+                    target = candidate;
+                    break;
+                }
+
+                if (target is null) break;
+                SetPosition(listView, p.Index, target.Value.X, target.Value.Y);
+                used.Add(PositionKey(target.Value.X, target.Value.Y));
+                moved++;
+            }
+        }
+
+        Thread.Sleep(40);
+        var remaining = ReadPositions(listView)
+            .Where(p => p.Index < currentCount)
+            .Count(p => CellIntersectsWidget(p.X, p.Y, spacing.X, spacing.Y, exclusionArea));
+        return (moved, remaining);
     }
 
     private static string ReserveIcons(IntPtr widget, string statePath)
@@ -410,24 +494,39 @@ internal static class Program
         };
 
         GetClientRect(listView, out var client);
-        var first = state.Positions[0];
+        var first = state.Positions
+            .OrderBy(p => p.X)
+            .ThenBy(p => p.Y)
+            .First();
         var anchorX = ((first.X % spacing.X) + spacing.X) % spacing.X;
         var anchorY = ((first.Y % spacing.Y) + spacing.Y) % spacing.Y;
 
-        var candidates = new List<(int X, int Y)>();
-        for (var x = anchorX; x < client.Right; x += spacing.X)
-        {
-            for (var y = anchorY; y < client.Bottom; y += spacing.Y)
-            {
-                if (x < client.Left || y < client.Top) continue;
-                if (CellIntersectsWidget(x, y, spacing.X, spacing.Y, widgetArea)) continue;
-                candidates.Add((x, y));
-            }
-        }
+        // Explorer can snap icon positions after LVM_SETITEMPOSITION32. Keep a half-cell
+        // safety margin around WeekCal and verify the actual positions after moving.
+        var safetyPaddingX = Math.Max(8, spacing.X / 2);
+        var safetyPaddingY = Math.Max(8, spacing.Y / 2);
+        var exclusionArea = ExpandAndClamp(widgetArea, safetyPaddingX, safetyPaddingY, client);
+        var candidates = BuildCandidateGrid(client, spacing, anchorX, anchorY, exclusionArea);
+
+        if (candidates.Count < Math.Min(currentCount, state.Positions.Count))
+            throw new InvalidOperationException("No hay suficientes celdas libres para acomodar todos los iconos fuera de WeekCal.");
 
         var moved = ArrangeIconsAroundWidget(listView, state.Positions, candidates, currentCount);
+        var correction = CorrectRemainingOverlaps(listView, candidates, currentCount, spacing, exclusionArea);
+        moved += correction.Moved;
 
-        return JsonSerializer.Serialize(new { moved, autoArrangeWasEnabled = state.AutoArrange });
+        if (correction.Remaining > 0)
+            throw new InvalidOperationException($"Explorer dejó {correction.Remaining} iconos dentro del área reservada después de verificar el reacomodo.");
+
+        return JsonSerializer.Serialize(new
+        {
+            moved,
+            verified = true,
+            remainingOverlaps = 0,
+            safetyPaddingX,
+            safetyPaddingY,
+            autoArrangeWasEnabled = state.AutoArrange
+        });
     }
 
     private static string RestoreIcons(string statePath)
