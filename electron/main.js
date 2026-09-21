@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, safeStorage, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, safeStorage, screen, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -343,15 +343,29 @@ function tokenHasWriteScope() {
 }
 
 async function googleStatus() {
-  const creds = getCredentialsRecord();
+  const packaged = getPackagedGoogleCredentials();
+  const legacy = packaged ? null : getLegacyCredentialsRecord();
+  const creds = packaged || (legacy?.client_id ? { client_id: legacy.client_id } : null);
   const token = getTokenRecord();
-  if (!creds || !token) return { connected: false };
+  const integrationSource = packaged ? 'packaged' : (legacy?.client_id ? 'legacy' : 'none');
+  if (!creds || !token) return {
+    connected: false,
+    integrationSource,
+    clientIdRecoverable: integrationSource === 'legacy'
+  };
   try {
     const client = await ensureOAuthClient();
     const cal = google.calendar({ version: 'v3', auth: client });
     const res = await cal.calendarList.list({ maxResults: 1 });
     const accountEmail = await getConnectedGoogleEmail(client);
-    return { connected: true, calendarsKnown: Boolean(res.data.items?.length), writeEnabled: tokenHasWriteScope(), accountEmail };
+    return {
+      connected: true,
+      calendarsKnown: Boolean(res.data.items?.length),
+      writeEnabled: tokenHasWriteScope(),
+      accountEmail,
+      integrationSource,
+      clientIdRecoverable: integrationSource === 'legacy'
+    };
   } catch (e) {
     return { connected: false, error: e.message };
   }
@@ -594,6 +608,12 @@ ipcMain.handle('widget:close', () => mainWindow?.close());
 ipcMain.handle('widget:open-link', (_e, url) => shell.openExternal(url));
 
 ipcMain.handle('google:status', googleStatus);
+ipcMain.handle('google:copy-client-id', () => {
+  const creds = getCredentialsRecord();
+  if (!creds?.client_id) throw new Error('No se encontró una integración anterior de Google.');
+  clipboard.writeText(creds.client_id);
+  return { copied: true };
+});
 ipcMain.handle('google:connect', connectGoogle);
 ipcMain.handle('google:switch-account', switchGoogleAccount);
 ipcMain.handle('google:authorize-write', authorizeGoogleWrite);
