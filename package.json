@@ -13,7 +13,6 @@
     "test": "node --test tests/*.test.js"
   },
   "dependencies": {
-    "google-auth-library": "latest",
     "googleapis": "latest"
   },
   "devDependencies": {
