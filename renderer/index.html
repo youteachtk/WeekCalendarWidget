@@ -66,12 +66,18 @@
       <div class="setting-section">
         <h3>Google Calendar</h3>
         <div id="googleDisconnected" class="connect-card">
-          <div><strong>Conectar cuenta</strong><small>Lectura y edición de tus calendarios de Google</small></div>
-          <button id="connectGoogle" class="primary-btn">Conectar</button>
+          <div><strong>Conectar con Google</strong><small>Cada persona inicia sesión con su propia cuenta; no se necesitan archivos de configuración.</small></div>
+          <button id="connectGoogle" class="primary-btn">Conectar con Google</button>
         </div>
         <div id="googleConnected" class="connected-card hidden">
-          <div class="connected-row"><span class="status-good">●</span><strong>Google conectado</strong></div>
-          <button id="disconnectGoogle" class="text-btn">Desconectar</button>
+          <div>
+            <div class="connected-row"><span class="status-good">●</span><strong>Google conectado</strong></div>
+            <small id="googleAccountEmail">Cuenta conectada</small>
+          </div>
+          <div class="connected-actions">
+            <button id="switchGoogleAccount" class="text-btn">Cambiar cuenta</button>
+            <button id="disconnectGoogle" class="text-btn">Desconectar</button>
+          </div>
         </div>
         <div id="calendarChooser" class="calendar-chooser"></div>
       </div>
