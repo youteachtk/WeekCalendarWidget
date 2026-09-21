@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('weekcal', {
   setLock: (value) => ipcRenderer.invoke('widget-extra:set-lock', value),
   googleStatus: () => ipcRenderer.invoke('google:status'),
   googleConnect: () => ipcRenderer.invoke('google:connect'),
+  googleSwitchAccount: () => ipcRenderer.invoke('google:switch-account'),
   googleAuthorizeWrite: () => ipcRenderer.invoke('google:authorize-write'),
   googleDisconnect: () => ipcRenderer.invoke('google:disconnect'),
   listCalendars: () => ipcRenderer.invoke('google:list-calendars'),
