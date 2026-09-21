@@ -19,7 +19,7 @@ test('WeekCal OAuth app credentials are injected once during the Windows build',
   assert.match(main, /google-app-config\.generated\.json/);
   assert.match(workflow, /WEEKCAL_GOOGLE_CLIENT_ID/);
   assert.match(workflow, /WEEKCAL_GOOGLE_CLIENT_SECRET/);
-  assert.match(workflow, /secrets\.WEEKCAL_GOOGLE_CLIENT_ID/);
+  assert.match(workflow, /vars\.WEEKCAL_GOOGLE_CLIENT_ID/);
   assert.match(workflow, /secrets\.WEEKCAL_GOOGLE_CLIENT_SECRET/);
   assert.match(workflow, /google-app-config\.generated\.json/);
 });
