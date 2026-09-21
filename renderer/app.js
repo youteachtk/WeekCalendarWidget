@@ -4,6 +4,7 @@ const state = {
   settings: null,
   extra: { desktopMode: true, reserveIconSpace: true, lockWidget: false, theme: 'dark' },
   connected: false,
+  accountEmail: '',
   calendars: [],
   events: [],
   weekOffset: 0,
@@ -350,10 +351,12 @@ async function updateGoogleState() {
   const status=await api.googleStatus();
   state.connected=Boolean(status.connected);
   state.writeEnabled=Boolean(status.writeEnabled);
+  state.accountEmail=String(status.accountEmail||'');
   $("googleDisconnected").classList.toggle("hidden",state.connected);
   $("googleConnected").classList.toggle("hidden",!state.connected);
   $("syncStatus").className=state.connected?"sync-status ok":"sync-status";
   $("syncText").textContent=state.connected?"Google":"Demo";
+  $("googleAccountEmail").textContent=state.accountEmail||"Cuenta conectada";
   if (state.connected) {
     try {
       state.calendars=await api.listCalendars();
@@ -364,6 +367,8 @@ async function updateGoogleState() {
     }
   } else {
     state.calendars=[];
+    state.accountEmail='';
+    $("googleAccountEmail").textContent="Cuenta conectada";
     $("calendarChooser").innerHTML="";
   }
 }
@@ -672,13 +677,25 @@ function bindUI() {
 
   $("connectGoogle").onclick=async()=>{
     try {
-      toast("Selecciona tus credenciales OAuth de Google…");
+      toast("Abriendo inicio de sesión de Google…");
       const result=await api.googleConnect();
-      if (!result?.canceled) {
+      if (result?.connected) {
         await updateGoogleState();
         await refresh(true);
       }
     } catch(e) { toast("No se pudo conectar: "+e.message); }
+  };
+
+  $("switchGoogleAccount").onclick=async()=>{
+    try {
+      toast("Selecciona otra cuenta de Google…");
+      const result=await api.googleSwitchAccount();
+      if (result?.connected) {
+        state.events=[];
+        await updateGoogleState();
+        await refresh(true);
+      }
+    } catch(e) { toast("No se pudo cambiar de cuenta: "+e.message); }
   };
 
   $("disconnectGoogle").onclick=async()=>{
