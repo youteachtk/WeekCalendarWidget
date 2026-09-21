@@ -15,11 +15,20 @@ test('Google login no longer asks the user to choose an OAuth JSON file', () => 
   assert.match(html, /Conectar con Google/);
 });
 
-test('packaged WeekCal OAuth client is injected during the Windows build', () => {
+test('packaged WeekCal public desktop OAuth client ID is injected during the Windows build', () => {
   assert.match(main, /google-app-config\.generated\.json/);
   assert.match(workflow, /WEEKCAL_GOOGLE_CLIENT_ID/);
-  assert.match(workflow, /WEEKCAL_GOOGLE_CLIENT_SECRET/);
+  assert.doesNotMatch(workflow, /WEEKCAL_GOOGLE_CLIENT_SECRET/);
+  assert.match(workflow, /vars\.WEEKCAL_GOOGLE_CLIENT_ID/);
   assert.match(workflow, /google-app-config\.generated\.json/);
+});
+
+test('desktop OAuth uses PKCE and no client secret authentication', () => {
+  assert.match(main, /generateCodeVerifierAsync\s*\(/);
+  assert.match(main, /CodeChallengeMethod\.S256/);
+  assert.match(main, /codeVerifier:\s*pkce\.codeVerifier/);
+  assert.match(main, /ClientAuthentication\.None/);
+  assert.doesNotMatch(main, /client_secret/);
 });
 
 test('Google account can be switched without mixing calendar selection', () => {
