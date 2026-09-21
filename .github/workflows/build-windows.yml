@@ -19,7 +19,25 @@ on:
       - ".github/workflows/build-windows.yml"
 
 jobs:
-  build:
+  validate:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build desktop helper
+        run: dotnet publish native/DesktopHost/DesktopHost.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o native/DesktopHost/publish
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm test
+
+  package:
+    needs: validate
     runs-on: windows-latest
     permissions:
       contents: read
@@ -48,7 +66,6 @@ jobs:
             client_secret = $env:WEEKCAL_GOOGLE_CLIENT_SECRET
           } | ConvertTo-Json -Compress
           Set-Content -Path "electron/google-app-config.generated.json" -Value $config -Encoding UTF8
-      - run: npm test
       - run: npm run dist:win
       - name: Remove generated OAuth config
         if: always()
