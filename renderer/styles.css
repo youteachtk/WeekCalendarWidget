@@ -127,7 +127,8 @@ select { background:#252a35; color:#fff; border:1px solid #353c4a; border-radius
 input[type="range"] { width:140px; accent-color:#7b83ff; }
 input[type="checkbox"] { width:18px; height:18px; accent-color:#7b83ff; }
 .connect-card, .connected-card { display:flex; align-items:center; justify-content:space-between; gap:12px; background:#202530; border:1px solid #303744; border-radius:10px; padding:11px; }
-.connect-card small { display:block; color:#929baa; margin-top:3px; font-size:10px; }
+.connect-card small, .connected-card small { display:block; color:#929baa; margin-top:3px; font-size:10px; }
+.connected-actions { display:flex; flex-direction:column; align-items:flex-end; gap:5px; }
 .primary-btn { border:0; background:#6875ff; color:#fff; padding:8px 12px; border-radius:8px; font-weight:650; }
 .text-btn { border:0; background:transparent; color:#aeb7c6; text-decoration:underline; font-size:11px; }
 .connected-row { display:flex; gap:8px; align-items:center; }
