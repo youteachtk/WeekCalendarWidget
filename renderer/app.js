@@ -324,6 +324,7 @@ async function updateGoogleState() {
   state.accountEmail=String(status.accountEmail||'');
   $("googleDisconnected").classList.toggle("hidden",state.connected);
   $("googleConnected").classList.toggle("hidden",!state.connected);
+  $("disconnectedEmptyState").classList.toggle("hidden",state.connected);
   $("syncStatus").className=state.connected?"sync-status ok":"sync-status";
   $("syncText").textContent=state.connected?"Google":"Sin conectar";
   $("googleAccountEmail").textContent=state.accountEmail||"Cuenta conectada";
@@ -645,7 +646,7 @@ function bindUI() {
   $("dayStart").onchange=updateDisplay;
   $("dayEnd").onchange=updateDisplay;
 
-  $("connectGoogle").onclick=async()=>{
+  const connectGoogleAccount=async()=>{
     try {
       toast("Abriendo inicio de sesión de Google…");
       const result=await api.googleConnect();
@@ -655,6 +656,8 @@ function bindUI() {
       }
     } catch(e) { toast("No se pudo conectar: "+e.message); }
   };
+  $("connectGoogle").onclick=connectGoogleAccount;
+  $("emptyStateConnectGoogle").onclick=connectGoogleAccount;
 
   $("switchGoogleAccount").onclick=async()=>{
     try {
