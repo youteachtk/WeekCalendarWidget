@@ -361,8 +361,7 @@ async function performOAuthGrant(credentials, {
     const server = http.createServer(async (req, res) => {
       try {
         const u = new URL(req.url, 'http://127.0.0.1');
-        const expectedPath = '/';
-        if (u.pathname !== expectedPath && !(expectedPath === '/' && u.pathname === '')) {
+        if (u.pathname !== '/') {
           res.writeHead(404);
           res.end('Not found');
           return;
@@ -378,26 +377,42 @@ async function performOAuthGrant(credentials, {
         }
         if (err) throw new Error(errDescription ? `${err}: ${errDescription}` : err);
         if (!code) throw new Error('Google no devolvió el código de autorización.');
+        if (!pkce?.codeVerifier) throw new Error('No se pudo validar el inicio de sesión seguro con Google.');
 
         const port = server.address().port;
         const redirectUri = `http://127.0.0.1:${port}`;
 
-        const client = createOAuthClient(credentials, redirectUri, { persistTokens: false });
+        const tokenBody = new URLSearchParams({
+          code,
+          client_id: credentials.client_id,
+          redirect_uri: redirectUri,
+          grant_type: 'authorization_code',
+          code_verifier: pkce.codeVerifier
+        });
+        if (credentials.client_secret) tokenBody.set('client_secret', credentials.client_secret);
 
-        let tokenResult;
-        if (useLegacyDesktopCredentials) {
-          tokenResult = await client.getToken(code);
-        } else {
-          if (!pkce?.codeVerifier) throw new Error('No se pudo validar el inicio de sesión seguro con Google.');
-          tokenResult = await client.getToken({
-            code,
-            codeVerifier: pkce.codeVerifier,
-            redirect_uri: redirectUri,
-            client_id: credentials.client_id
-          });
+        const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded' },
+          body: tokenBody.toString()
+        });
+
+        let tokenPayload = {};
+        try { tokenPayload = await tokenResponse.json(); } catch {}
+        if (!tokenResponse.ok) {
+          const detail = tokenPayload?.error_description || tokenPayload?.error || `HTTP ${tokenResponse.status}`;
+          throw new Error(`Google OAuth token exchange failed: ${detail}`);
         }
 
-        const tokens = tokenResult.tokens || {};
+        const tokens = {
+          ...tokenPayload,
+          expiry_date: tokenPayload.expires_in
+            ? Date.now() + Number(tokenPayload.expires_in) * 1000
+            : undefined
+        };
+        delete tokens.expires_in;
+
+        const client = createOAuthClient(credentials, redirectUri, { persistTokens: false });
         client.setCredentials(tokens);
 
         if (persistTokens) {
@@ -408,8 +423,10 @@ async function performOAuthGrant(credentials, {
         res.end('<html><body style="font-family:Segoe UI;padding:40px;background:#111;color:#eee"><h2>WeekCal autorizado</h2><p>Puedes volver a WeekCal.</p></body></html>');
         finish(resolve, { client, tokens });
       } catch (e) {
+        const message = e?.message || String(e);
+        appendCrashLog('google-oauth', message);
         res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end(e.message);
+        res.end(message);
         finish(reject, e);
       }
     });
@@ -418,20 +435,19 @@ async function performOAuthGrant(credentials, {
       try {
         const port = server.address().port;
         const redirectUri = `http://127.0.0.1:${port}`;
-
         const client = createOAuthClient(credentials, redirectUri, { persistTokens: false });
+
+        pkce = await client.generateCodeVerifierAsync();
 
         const options = {
           access_type: accessType,
           prompt: prompt || (selectAccount ? 'select_account' : 'consent'),
           scope: scopes,
-          state: expectedState
+          state: expectedState,
+          code_challenge: pkce.codeChallenge,
+          code_challenge_method: CodeChallengeMethod.S256
         };
         if (loginHint) options.login_hint = loginHint;
-
-        pkce = await client.generateCodeVerifierAsync();
-        options.code_challenge = pkce.codeChallenge;
-        options.code_challenge_method = CodeChallengeMethod.S256;
 
         const authUrl = client.generateAuthUrl(options);
         await shell.openExternal(authUrl);
