@@ -58,7 +58,7 @@ internal static class Program
 
     private sealed class IconLayoutState
     {
-        public int Version { get; set; } = 2;
+        public int Version { get; set; } = 3;
         public bool AutoArrange { get; set; }
         public List<IconPosition> Positions { get; set; } = new();
     }
@@ -402,9 +402,9 @@ internal static class Program
         RECT exclusionArea)
     {
         var candidates = new List<(int X, int Y)>();
-        for (var x = anchorX; x + spacing.X <= client.Right; x += spacing.X)
+        for (var x = anchorX; x < client.Right; x += spacing.X)
         {
-            for (var y = anchorY; y + spacing.Y <= client.Bottom; y += spacing.Y)
+            for (var y = anchorY; y < client.Bottom; y += spacing.Y)
             {
                 if (x < client.Left || y < client.Top) continue;
                 if (CellIntersectsWidget(x, y, spacing.X, spacing.Y, exclusionArea)) continue;
@@ -505,17 +505,20 @@ internal static class Program
             .Where(p => p.Index < currentCount)
             .ToList();
 
+        if (currentPositions.Count == 0)
+            return JsonSerializer.Serialize(new { moved = 0, message = "No hay iconos que acomodar." });
+
         IconLayoutState state;
-        var recreateSnapshot = true;
+        var existingValid = false;
         if (File.Exists(statePath))
         {
             try
             {
                 var existing = JsonSerializer.Deserialize<IconLayoutState>(File.ReadAllText(statePath));
-                if (existing is not null && existing.Version >= 2 && existing.Positions.Count > 0)
+                if (existing is not null && existing.Version >= 3 && existing.Positions.Count > 0)
                 {
                     state = existing;
-                    recreateSnapshot = false;
+                    existingValid = true;
                 }
                 else
                 {
@@ -532,11 +535,11 @@ internal static class Program
             state = new IconLayoutState();
         }
 
-        if (recreateSnapshot)
+        if (!existingValid)
         {
             state = new IconLayoutState
             {
-                Version = 2,
+                Version = 3,
                 AutoArrange = IsAutoArrange(listView),
                 Positions = currentPositions
                     .Select(p => new IconPosition { Index = p.Index, X = p.X, Y = p.Y })
@@ -547,47 +550,41 @@ internal static class Program
             File.WriteAllText(statePath, JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }));
         }
 
-        if (currentPositions.Count == 0)
-            return JsonSerializer.Serialize(new { moved = 0, detectedOverlaps = 0, message = "No hay iconos que acomodar." });
-
         if (IsAutoArrange(listView)) SetAutoArrange(listView, false);
 
-        var widgetArea = GetWidgetAreaInListView(widget, listView);
-        GetClientRect(listView, out var client);
-        var spacing = GetSpacing(listView);
+        if (!GetWindowRect(widget, out var widgetRect))
+            throw new InvalidOperationException("No se pudo obtener el área del widget.");
 
-        var safetyPaddingX = Math.Max(8, spacing.X / 3);
-        var safetyPaddingY = Math.Max(8, spacing.Y / 3);
-        var exclusionArea = ExpandAndClamp(widgetArea, safetyPaddingX, safetyPaddingY, client);
+        var points = new[]
+        {
+            new POINT { X = widgetRect.Left, Y = widgetRect.Top },
+            new POINT { X = widgetRect.Right, Y = widgetRect.Bottom }
+        };
+        MapWindowPoints(IntPtr.Zero, listView, points, 2);
+
+        var spacing = GetSpacing(listView);
+        var widgetArea = new RECT
+        {
+            Left = Math.Min(points[0].X, points[1].X),
+            Top = Math.Min(points[0].Y, points[1].Y),
+            Right = Math.Max(points[0].X, points[1].X),
+            Bottom = Math.Max(points[0].Y, points[1].Y)
+        };
+
+        GetClientRect(listView, out var client);
 
         var anchor = FindGridAnchor(currentPositions, spacing);
+        var safetyPaddingX = 8;
+        var safetyPaddingY = 8;
+        var exclusionArea = ExpandAndClamp(widgetArea, safetyPaddingX, safetyPaddingY, client);
+
         var candidates = BuildCandidateGrid(client, spacing, anchor.X, anchor.Y, exclusionArea);
+        if (candidates.Count < currentPositions.Count)
+            throw new InvalidOperationException("No hay suficientes celdas libres para acomodar los iconos fuera de WeekCal.");
 
-        var detectedOverlaps = currentPositions
-            .Count(p => CellIntersectsWidget(p.X, p.Y, spacing.X, spacing.Y, exclusionArea));
-
-        if (detectedOverlaps == 0)
-        {
-            return JsonSerializer.Serialize(new
-            {
-                moved = 0,
-                verified = true,
-                detectedOverlaps = 0,
-                remainingOverlaps = 0,
-                widgetArea,
-                exclusionArea,
-                spacingX = spacing.X,
-                spacingY = spacing.Y,
-                currentCount
-            });
-        }
-
-        var correction = CorrectRemainingOverlaps(
-            listView,
-            candidates,
-            currentCount,
-            spacing,
-            exclusionArea);
+        var moved = ArrangeIconsAroundWidget(listView, currentPositions, candidates, currentCount);
+        var correction = CorrectRemainingOverlaps(listView, candidates, currentCount, spacing, exclusionArea);
+        moved += correction.Moved;
 
         if (correction.Remaining > 0)
             throw new InvalidOperationException(
@@ -595,9 +592,8 @@ internal static class Program
 
         return JsonSerializer.Serialize(new
         {
-            moved = correction.Moved,
+            moved,
             verified = true,
-            detectedOverlaps,
             remainingOverlaps = 0,
             widgetArea,
             exclusionArea,
