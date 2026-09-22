@@ -27,7 +27,7 @@ test('recovered legacy desktop credentials use the original secret-based OAuth f
   assert.match(main, /useLegacyDesktopCredentials/);
   assert.match(main, /new google\.auth\.OAuth2\(credentials\.client_id, credentials\.client_secret, redirectUri\)/);
   assert.match(main, /oauth2callback/);
-  assert.match(main, /tokenResult = await oauthClient\.getToken\(code\)/);
+  assert.match(main, /tokenResult = await client\.getToken\(code\)/);
 });
 
 test('client-id-only builds keep PKCE as a fallback', () => {
