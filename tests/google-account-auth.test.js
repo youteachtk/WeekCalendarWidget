@@ -23,14 +23,15 @@ test('WeekCal reuses one Google desktop OAuth client configuration for every ins
   assert.match(workflow, /google-app-config\.generated\.json/);
 });
 
-test('recovered legacy desktop credentials use the original secret-based OAuth flow', () => {
-  assert.match(main, /useLegacyDesktopCredentials/);
+test('desktop credentials use a root loopback callback and explicit PKCE token exchange', () => {
   assert.match(main, /new google\.auth\.OAuth2\(credentials\.client_id, credentials\.client_secret, redirectUri\)/);
-  assert.match(main, /oauth2callback/);
-  assert.match(main, /tokenResult = await client\.getToken\(code\)/);
+  assert.doesNotMatch(main, /oauth2callback/);
+  assert.match(main, /code_verifier: pkce\.codeVerifier/);
+  assert.match(main, /https:\/\/oauth2\.googleapis\.com\/token/);
+  assert.match(main, /client_secret/);
 });
 
-test('client-id-only builds keep PKCE as a fallback', () => {
+test('all desktop OAuth grants use PKCE', () => {
   assert.match(main, /generateCodeVerifierAsync\s*\(/);
   assert.match(main, /CodeChallengeMethod\.S256/);
   assert.match(main, /ClientAuthentication\.None/);
@@ -113,7 +114,7 @@ test('fresh installations contain the recovered WeekCal Google client ID', () =>
   assert.match(main, /process\.env\.WEEKCAL_GOOGLE_CLIENT_ID \|\| DEFAULT_GOOGLE_CLIENT_ID/);
 });
 
-test('fresh-PC OAuth uses PKCE without requiring the old JSON or client secret', () => {
+test('fresh-PC OAuth uses PKCE and supports packaged desktop credentials', () => {
   assert.match(main, /ClientAuthentication\.None/);
   assert.match(main, /generateCodeVerifierAsync\s*\(/);
   assert.match(main, /CodeChallengeMethod\.S256/);
