@@ -8,8 +8,6 @@ const { OAuth2Client, ClientAuthentication, CodeChallengeMethod } = require('goo
 
 const APP_NAME = 'WeekCal Widget';
 const GOOGLE_SCOPES = [
-  'openid',
-  'email',
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/calendar.calendarlist.readonly'
 ];
@@ -187,7 +185,18 @@ function getCredentialsRecord() {
 }
 
 function getTokenRecord() {
-  return readSecure('google-token.secure.json', { requireEncryption: true });
+  const token = readSecure('google-token.secure.json');
+  if (!token) return null;
+
+  // Migrate tokens written by older WeekCal builds instead of rejecting them.
+  try {
+    const record = readJson(userFile('google-token.secure.json'), null);
+    if (record?.encrypted !== true && safeStorage.isEncryptionAvailable()) {
+      saveSecure('google-token.secure.json', token, { requireEncryption: true });
+    }
+  } catch {}
+
+  return token;
 }
 
 function bc2ColorFromDescription(description = '') {
@@ -329,7 +338,7 @@ async function performOAuth(credentials, { selectAccount = true } = {}) {
 
         const options = {
           access_type: 'offline',
-          prompt: selectAccount ? 'select_account consent' : 'consent',
+          prompt: useLegacyDesktopCredentials ? 'consent' : (selectAccount ? 'select_account consent' : 'consent'),
           include_granted_scopes: true,
           scope: GOOGLE_SCOPES,
           state: expectedState
