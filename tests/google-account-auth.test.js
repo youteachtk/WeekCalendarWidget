@@ -138,3 +138,11 @@ test('WeekCal exposes authorized-user administration only through authenticated 
   assert.match(html, /id="weekcalAdmin"/);
   assert.match(html, /id="authorizedUserEmail"/);
 });
+
+
+test('installed-app OAuth never sends unsupported incremental authorization', () => {
+  assert.doesNotMatch(main, /include_granted_scopes/);
+  assert.match(main, /scope:\s*scopes/);
+  assert.match(main, /GOOGLE_IDENTITY_SCOPES/);
+  assert.match(main, /GOOGLE_CALENDAR_SCOPES/);
+});
