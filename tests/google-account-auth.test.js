@@ -49,14 +49,14 @@ test('Google account can be switched without mixing calendar selection', () => {
   assert.match(html, /Cambiar cuenta/);
 });
 
-test('OAuth flow verifies state and keeps the original Calendar scope set', () => {
-  assert.match(main, /crypto\.randomBytes/);
-  assert.match(main, /returnedState\s*!==\s*expectedState/);
-  assert.doesNotMatch(main, /'openid'/);
-  assert.doesNotMatch(main, /'email'/);
-  assert.match(main, /calendar\.events/);
-  assert.match(main, /calendar\.calendarlist\.readonly/);
-  assert.match(main, /accountEmail/);
+test('OAuth is two-stage: identity authorization happens before Calendar consent', () => {
+  assert.match(main, /GOOGLE_IDENTITY_SCOPES\s*=\s*\['openid', 'email'\]/);
+  assert.match(main, /GOOGLE_CALENDAR_SCOPES/);
+  assert.match(main, /check-identity/);
+  assert.match(main, /Stage 1:[\s\S]{0,1200}GOOGLE_IDENTITY_SCOPES/);
+  assert.match(main, /Stage 2:[\s\S]{0,1600}GOOGLE_CALENDAR_SCOPES/);
+  assert.match(main, /authorizedEmail/);
+  assert.match(main, /finalEmail !== authorizedEmail/);
 });
 
 test('legacy Google tokens are accepted and migrated to Electron safeStorage', () => {
@@ -92,9 +92,12 @@ test('legacy Google integration can be recovered locally while only copying its 
   assert.match(renderer, /googleCopyClientId/);
 });
 
-test('Windows installer can be built before the recovered client ID is added to GitHub', () => {
-  assert.match(workflow, /building recovery-capable installer/i);
-  assert.doesNotMatch(workflow, /if:\s*\$\{\{\s*vars\.WEEKCAL_GOOGLE_CLIENT_ID/);
+test('Windows installer packages the deployed WeekCal authorization service URL', () => {
+  assert.match(workflow, /cloudflare-auth:/);
+  assert.match(workflow, /CLOUDFLARE_API_TOKEN/);
+  assert.match(workflow, /CLOUDFLARE_ACCOUNT_ID/);
+  assert.match(workflow, /weekcal-auth-config\.generated\.json/);
+  assert.match(workflow, /needs\.cloudflare-auth\.outputs\.auth_url/);
 });
 
 
@@ -115,4 +118,23 @@ test('fresh-PC OAuth uses PKCE without requiring the old JSON or client secret',
   assert.match(main, /generateCodeVerifierAsync\s*\(/);
   assert.match(main, /CodeChallengeMethod\.S256/);
   assert.match(main, /http:\/\/127\.0\.0\.1:\$\{port\}/);
+});
+
+
+test('central allowlist is checked again for connected sessions', () => {
+  assert.match(main, /ensureAuthorizedOAuthClient/);
+  assert.match(main, /\/api\/check-access/);
+  assert.match(main, /authorizationCache/);
+  assert.match(main, /getAccessToken\(\)/);
+});
+
+test('WeekCal exposes authorized-user administration only through authenticated IPC calls', () => {
+  assert.match(main, /weekcal-auth:list-users/);
+  assert.match(main, /weekcal-auth:add-user/);
+  assert.match(main, /weekcal-auth:remove-user/);
+  assert.match(preload, /authListUsers/);
+  assert.match(preload, /authAddUser/);
+  assert.match(preload, /authRemoveUser/);
+  assert.match(html, /id="weekcalAdmin"/);
+  assert.match(html, /id="authorizedUserEmail"/);
 });
