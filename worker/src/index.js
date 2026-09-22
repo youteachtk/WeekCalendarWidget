@@ -1,10 +1,10 @@
 const GOOGLE_CLIENT_ID = '761061579107-v9jis3ikqluqo1ghrb16antp1e4qoitv.apps.googleusercontent.com';
 
-const INITIAL_USERS = [
-  'arturo.mendez@prefecomelchorocampo.edu.mx',
-  'youteach.tk@gmail.com',
-  'arturomendezk2@gmail.com'
-];
+const BOOTSTRAP_ADMIN_HASHES = new Set([
+  '0597f85b3b14fe6f0cacd069c939d7b2c1a675d5ca55d48d3a40b79f803adfb9',
+  'c2fd677917ac9415c01989c8198c1e6734e9a7c500aad6c689a22587d168d9e5',
+  '621a9bc5a0f2d74dde64e7a345ad4b641f9f8042a0e9d2d08166b8da72148a05'
+]);
 
 function normalizeEmail(value = '') {
   return String(value).trim().toLowerCase();
@@ -24,20 +24,25 @@ function json(data, status = 200, extraHeaders = {}) {
   });
 }
 
-async function ensureSeed(env) {
-  if (await env.WEEKCAL_AUTH.get('meta:seeded')) return;
+async function sha256Hex(value) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
-  for (const email of INITIAL_USERS) {
-    const normalized = normalizeEmail(email);
-    await env.WEEKCAL_AUTH.put('allow:' + normalized, JSON.stringify({
-      email: normalized,
-      addedAt: new Date().toISOString(),
-      source: 'bootstrap'
-    }));
-    await env.WEEKCAL_AUTH.put('admin:' + normalized, '1');
-  }
+async function ensureBootstrapAccount(env, email) {
+  const normalized = normalizeEmail(email);
+  if (await env.WEEKCAL_AUTH.get('allow:' + normalized)) return;
 
-  await env.WEEKCAL_AUTH.put('meta:seeded', new Date().toISOString());
+  const hash = await sha256Hex(normalized);
+  if (!BOOTSTRAP_ADMIN_HASHES.has(hash)) return;
+
+  await env.WEEKCAL_AUTH.put('allow:' + normalized, JSON.stringify({
+    email: normalized,
+    addedAt: new Date().toISOString(),
+    source: 'bootstrap'
+  }));
+  await env.WEEKCAL_AUTH.put('admin:' + normalized, '1');
 }
 
 function bearer(request) {
@@ -135,6 +140,7 @@ async function isAdmin(env, email) {
 async function requireAdmin(request, env) {
   const accessToken = bearer(request);
   const identity = await verifyAccessToken(env, accessToken);
+  await ensureBootstrapAccount(env, identity.email);
   if (!(await isAllowed(env, identity.email)) || !(await isAdmin(env, identity.email))) {
     throw new Error('Esta cuenta no tiene permisos para administrar usuarios de WeekCal.');
   }
@@ -176,8 +182,6 @@ async function readJson(request) {
 
 export default {
   async fetch(request, env) {
-    await ensureSeed(env);
-
     if (request.method === 'OPTIONS') {
       return new Response(null, {
         status: 204,
@@ -199,6 +203,7 @@ export default {
       if (request.method === 'POST' && url.pathname === '/api/check-identity') {
         const body = await readJson(request);
         const identity = await verifyIdToken(env, body.idToken);
+        await ensureBootstrapAccount(env, identity.email);
         const authorized = await isAllowed(env, identity.email);
 
         return json({
@@ -211,6 +216,7 @@ export default {
       if (request.method === 'POST' && url.pathname === '/api/check-access') {
         const body = await readJson(request);
         const identity = await verifyAccessToken(env, body.accessToken);
+        await ensureBootstrapAccount(env, identity.email);
         const authorized = await isAllowed(env, identity.email);
 
         return json({
