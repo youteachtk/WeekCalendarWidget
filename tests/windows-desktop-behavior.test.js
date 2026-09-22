@@ -56,10 +56,10 @@ test('icon reservation is verified after Explorer applies positions', () => {
 });
 
 
-test('icon reservation derives the grid from the current Explorer positions', () => {
-  assert.match(source, /FindGridAnchor\s*\(/);
-  assert.match(source, /DominantModulo\s*\(/);
-  assert.match(source, /FindGridAnchor\(currentPositions,\s*spacing\)/);
+test('icon reservation uses the original 0.4.6 grid anchor before verification', () => {
+  assert.match(source, /var first = state\.Positions/);
+  assert.match(source, /anchorX = \(\(first\.X % spacing\.X\) \+ spacing\.X\) % spacing\.X/);
+  assert.match(source, /anchorY = \(\(first\.Y % spacing\.Y\) \+ spacing\.Y\) % spacing\.Y/);
 });
 
 test('candidate icon cells cover the Explorer desktop grid', () => {
@@ -73,8 +73,8 @@ test('widget screen rectangle is mapped into Explorer coordinates before reflow'
   assert.match(source, /MapWindowPoints\(IntPtr\.Zero,\s*listView,\s*points,\s*2\)/);
 });
 
-test('old icon reservation snapshots are invalidated before the restored reflow algorithm', () => {
-  assert.match(source, /public int Version \{ get; set; \} = 3/);
-  assert.match(source, /existing\.Version >= 3/);
+test('old icon reservation snapshots are invalidated before the 0.5.1 reflow algorithm', () => {
+  assert.match(source, /public int Version \{ get; set; \} = 4/);
+  assert.match(source, /existing\.Version >= 4/);
   assert.match(source, /existingValid/);
 });
