@@ -50,14 +50,13 @@ test('Google account can be switched without mixing calendar selection', () => {
   assert.match(html, /Cambiar cuenta/);
 });
 
-test('OAuth is two-stage: identity authorization happens before Calendar consent', () => {
-  assert.match(main, /GOOGLE_IDENTITY_SCOPES\s*=\s*\['openid', 'email'\]/);
+test('desktop OAuth is a single non-incremental identity and Calendar grant', () => {
   assert.match(main, /GOOGLE_CALENDAR_SCOPES/);
+  assert.match(main, /scopes: GOOGLE_CALENDAR_SCOPES/);
   assert.match(main, /check-identity/);
-  assert.match(main, /Stage 1:[\s\S]{0,1200}GOOGLE_IDENTITY_SCOPES/);
-  assert.match(main, /Stage 2:[\s\S]{0,1600}GOOGLE_CALENDAR_SCOPES/);
-  assert.match(main, /authorizedEmail/);
-  assert.match(main, /finalEmail !== authorizedEmail/);
+  assert.doesNotMatch(main, /GOOGLE_IDENTITY_SCOPES/);
+  assert.doesNotMatch(main, /Stage 1:/);
+  assert.doesNotMatch(main, /Stage 2:/);
 });
 
 test('legacy Google tokens are accepted and migrated to Electron safeStorage', () => {
@@ -102,9 +101,9 @@ test('Windows installer packages the deployed WeekCal authorization service URL'
 });
 
 
-test('legacy desktop OAuth preserves the callback route that previously worked on this PC', () => {
-  assert.match(main, /useLegacyDesktopCredentials \? '\/oauth2callback' : '\/'/);
-  assert.match(main, /http:\/\/127\.0\.0\.1:\$\{port\}\/oauth2callback/);
+test('desktop OAuth uses only the documented root loopback callback', () => {
+  assert.doesNotMatch(main, /oauth2callback/);
+  assert.doesNotMatch(main, /useLegacyDesktopCredentials/);
   assert.match(main, /http:\/\/127\.0\.0\.1:\$\{port\}/);
 });
 
@@ -144,7 +143,7 @@ test('WeekCal exposes authorized-user administration only through authenticated 
 test('installed-app OAuth never sends unsupported incremental authorization', () => {
   assert.doesNotMatch(main, /include_granted_scopes/);
   assert.match(main, /scope:\s*scopes/);
-  assert.match(main, /GOOGLE_IDENTITY_SCOPES/);
+  assert.doesNotMatch(main, /GOOGLE_IDENTITY_SCOPES/);
   assert.match(main, /GOOGLE_CALENDAR_SCOPES/);
 });
 
