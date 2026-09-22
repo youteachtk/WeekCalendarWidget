@@ -5,6 +5,8 @@ const state = {
   extra: { desktopMode: true, reserveIconSpace: true, lockWidget: false, theme: 'dark' },
   connected: false,
   accountEmail: '',
+  isAdmin: false,
+  authorizedUsers: [],
   calendars: [],
   events: [],
   weekOffset: 0,
@@ -303,6 +305,66 @@ function renderCalendarChooser() {
   }
 }
 
+function renderAuthorizedUsers() {
+  const host=$("authorizedUsersList");
+  if (!host) return;
+  host.innerHTML="";
+
+  for (const user of state.authorizedUsers||[]) {
+    const row=document.createElement("div");
+    row.className="authorized-user-row";
+
+    const email=document.createElement("span");
+    email.className="authorized-user-email";
+    email.textContent=user.email;
+
+    const badge=document.createElement("span");
+    badge.className="authorized-user-badge";
+    badge.textContent=user.admin?"ADMIN":"";
+
+    const remove=document.createElement("button");
+    remove.type="button";
+    remove.className="authorized-user-remove";
+    remove.textContent="Quitar";
+    remove.disabled=user.email===state.accountEmail;
+    if (remove.disabled) remove.style.opacity=".35";
+    remove.onclick=async()=>{
+      if (remove.disabled) return;
+      try {
+        const result=await api.authRemoveUser(user.email);
+        state.authorizedUsers=result.users||[];
+        renderAuthorizedUsers();
+        toast("Acceso retirado a "+user.email);
+      } catch(e) {
+        toast("No se pudo quitar: "+e.message);
+      }
+    };
+
+    row.append(email,badge,remove);
+    host.appendChild(row);
+  }
+}
+
+async function loadAuthorizedUsers() {
+  if (!state.connected || !state.isAdmin) {
+    state.authorizedUsers=[];
+    $("weekcalAdmin")?.classList.add("hidden");
+    renderAuthorizedUsers();
+    return;
+  }
+
+  $("weekcalAdmin")?.classList.remove("hidden");
+  try {
+    const result=await api.authListUsers();
+    state.authorizedUsers=result.users||[];
+    renderAuthorizedUsers();
+  } catch(e) {
+    state.authorizedUsers=[];
+    renderAuthorizedUsers();
+    toast("No se pudo cargar la lista de usuarios: "+e.message);
+  }
+}
+
 function syncControls() {
   $("visibleDays").value=String(state.settings.visibleDays||7);
   $("dayStart").value=String(state.settings.dayStartHour ?? 8);
@@ -322,6 +384,7 @@ async function updateGoogleState() {
   state.connected=Boolean(status.connected);
   state.writeEnabled=Boolean(status.writeEnabled);
   state.accountEmail=String(status.accountEmail||'');
+  state.isAdmin=Boolean(status.isAdmin);
   $("googleDisconnected").classList.toggle("hidden",state.connected);
   $("googleConnected").classList.toggle("hidden",!state.connected);
   $("legacyGoogleRecovery").classList.toggle("hidden",!status.clientIdRecoverable);
@@ -334,14 +397,19 @@ async function updateGoogleState() {
       state.calendars=await api.listCalendars();
       state.eventColors=await api.listEventColors();
       renderCalendarChooser();
+      await loadAuthorizedUsers();
     } catch (e) {
       toast("No se pudieron leer los calendarios: "+e.message);
     }
   } else {
     state.calendars=[];
     state.accountEmail='';
+    state.isAdmin=false;
+    state.authorizedUsers=[];
     $("googleAccountEmail").textContent="Cuenta conectada";
     $("calendarChooser").innerHTML="";
+    $("weekcalAdmin")?.classList.add("hidden");
+    renderAuthorizedUsers();
   }
 }
 
@@ -685,6 +753,31 @@ function bindUI() {
       }
     } catch(e) { toast("No se pudo cambiar de cuenta: "+e.message); }
   };
+
+  $("addAuthorizedUser").onclick=async()=>{
+    const input=$("authorizedUserEmail");
+    const email=String(input.value||"").trim().toLowerCase();
+    if (!email) {
+      toast("Escribe un correo");
+      return;
+    }
+    try {
+      const result=await api.authAddUser(email);
+      state.authorizedUsers=result.users||[];
+      input.value="";
+      renderAuthorizedUsers();
+      toast("Usuario autorizado: "+email);
+    } catch(e) {
+      toast("No se pudo agregar: "+e.message);
+    }
+  };
+
+  $("authorizedUserEmail").addEventListener("keydown",(e)=>{
+    if (e.key==="Enter") {
+      e.preventDefault();
+      $("addAuthorizedUser").click();
+    }
+  });
 
   $("disconnectGoogle").onclick=async()=>{
     await api.googleDisconnect();
