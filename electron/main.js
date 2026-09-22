@@ -364,7 +364,7 @@ async function performOAuthGrant(credentials, {
     const server = http.createServer(async (req, res) => {
       try {
         const u = new URL(req.url, 'http://127.0.0.1');
-        const expectedPath = useLegacyDesktopCredentials ? '/oauth2callback' : '/';
+        const expectedPath = '/';
         if (u.pathname !== expectedPath && !(expectedPath === '/' && u.pathname === '')) {
           res.writeHead(404);
           res.end('Not found');
@@ -383,9 +383,7 @@ async function performOAuthGrant(credentials, {
         if (!code) throw new Error('Google no devolvió el código de autorización.');
 
         const port = server.address().port;
-        const redirectUri = useLegacyDesktopCredentials
-          ? `http://127.0.0.1:${port}/oauth2callback`
-          : `http://127.0.0.1:${port}`;
+        const redirectUri = `http://127.0.0.1:${port}`;
 
         const client = createOAuthClient(credentials, redirectUri, { persistTokens: false });
 
@@ -436,11 +434,9 @@ async function performOAuthGrant(credentials, {
         };
         if (loginHint) options.login_hint = loginHint;
 
-        if (!useLegacyDesktopCredentials) {
-          pkce = await client.generateCodeVerifierAsync();
-          options.code_challenge = pkce.codeChallenge;
-          options.code_challenge_method = CodeChallengeMethod.S256;
-        }
+        pkce = await client.generateCodeVerifierAsync();
+        options.code_challenge = pkce.codeChallenge;
+        options.code_challenge_method = CodeChallengeMethod.S256;
 
         const authUrl = client.generateAuthUrl(options);
         await shell.openExternal(authUrl);
@@ -455,60 +451,36 @@ async function performOAuthGrant(credentials, {
 }
 
 async function performAuthorizedOAuth(credentials, { selectAccount = true } = {}) {
-  // Stage 1: identify the Google account without requesting Calendar access.
-  const identityGrant = await performOAuthGrant(credentials, {
-    scopes: GOOGLE_IDENTITY_SCOPES,
+  // Installed/desktop apps do not support incremental authorization.
+  // Request the complete identity + Calendar scope set in a single Google OAuth flow.
+  const grant = await performOAuthGrant(credentials, {
+    scopes: GOOGLE_CALENDAR_SCOPES,
     selectAccount,
-    accessType: 'online',
-    prompt: selectAccount ? 'select_account' : 'consent'
+    accessType: 'offline',
+    prompt: selectAccount ? 'select_account consent' : 'consent'
   });
 
-  const identityToken = identityGrant.tokens?.id_token;
+  const identityToken = grant.tokens?.id_token;
   if (!identityToken) throw new Error('Google no devolvió la identidad de la cuenta.');
 
-  const preflight = await authServiceRequest('/api/check-identity', {
+  const verified = await authServiceRequest('/api/check-identity', {
     body: { idToken: identityToken }
   });
 
-  if (!preflight.authorized) {
-    throw new Error('Esta cuenta no está autorizada para usar WeekCal.');
-  }
-
-  const authorizedEmail = String(preflight.email || '').toLowerCase();
-
-  // Stage 2: only an authorized account is allowed to request Calendar access.
-  const calendarGrant = await performOAuthGrant(credentials, {
-    scopes: GOOGLE_CALENDAR_SCOPES,
-    selectAccount: false,
-    loginHint: authorizedEmail,
-    accessType: 'offline',
-    prompt: 'consent'
-  });
-
-  const finalIdentityToken = calendarGrant.tokens?.id_token;
-  if (!finalIdentityToken) throw new Error('Google no confirmó la identidad final de la cuenta.');
-
-  const finalCheck = await authServiceRequest('/api/check-identity', {
-    body: { idToken: finalIdentityToken }
-  });
-
-  const finalEmail = String(finalCheck.email || '').toLowerCase();
-  if (!finalCheck.authorized || finalEmail !== authorizedEmail) {
-    throw new Error('La cuenta autorizada cambió durante el inicio de sesión.');
-  }
+  const accountEmail = String(verified.email || '').toLowerCase();
 
   const storedTokens = {
-    ...calendarGrant.tokens,
+    ...grant.tokens,
     weekcalWriteEnabled: true,
-    weekcalAccountEmail: finalEmail
+    weekcalAccountEmail: accountEmail
   };
 
   saveSecure('google-token.secure.json', storedTokens, { requireEncryption: true });
   oauthClient = createOAuthClient(credentials, 'http://127.0.0.1');
   oauthClient.setCredentials(storedTokens);
   authorizationCache = {
-    email: finalEmail,
-    admin: Boolean(finalCheck.admin),
+    email: accountEmail,
+    admin: Boolean(verified.admin),
     expiresAt: Date.now() + 5 * 60 * 1000
   };
   saveSettings({ selectedCalendars: [] });
@@ -516,8 +488,8 @@ async function performAuthorizedOAuth(credentials, { selectAccount = true } = {}
   return {
     connected: true,
     writeEnabled: true,
-    accountEmail: finalEmail,
-    isAdmin: Boolean(finalCheck.admin)
+    accountEmail,
+    isAdmin: Boolean(verified.admin)
   };
 }
 
