@@ -41,6 +41,8 @@ internal static class Program
     private const uint MEM_RELEASE = 0x8000;
     private const uint PAGE_READWRITE = 0x04;
 
+    private static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = new IntPtr(-4);
+
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -58,7 +60,7 @@ internal static class Program
 
     private sealed class IconLayoutState
     {
-        public int Version { get; set; } = 4;
+        public int Version { get; set; } = 5;
         public bool AutoArrange { get; set; }
         public List<IconPosition> Positions { get; set; } = new();
     }
@@ -107,6 +109,13 @@ internal static class Program
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetProcessDpiAwarenessContext(IntPtr dpiContext);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     private static extern int MapWindowPoints(IntPtr hWndFrom, IntPtr hWndTo, [In, Out] POINT[] lpPoints, uint cPoints);
@@ -515,7 +524,7 @@ internal static class Program
             try
             {
                 var existing = JsonSerializer.Deserialize<IconLayoutState>(File.ReadAllText(statePath));
-                if (existing is not null && existing.Version >= 4 && existing.Positions.Count > 0)
+                if (existing is not null && existing.Version >= 5 && existing.Positions.Count > 0)
                 {
                     state = existing;
                     existingValid = true;
@@ -552,24 +561,8 @@ internal static class Program
 
         if (IsAutoArrange(listView)) SetAutoArrange(listView, false);
 
-        if (!GetWindowRect(widget, out var widgetRect))
-            throw new InvalidOperationException("No se pudo obtener el área del widget.");
-
-        var points = new[]
-        {
-            new POINT { X = widgetRect.Left, Y = widgetRect.Top },
-            new POINT { X = widgetRect.Right, Y = widgetRect.Bottom }
-        };
-        MapWindowPoints(IntPtr.Zero, listView, points, 2);
-
         var spacing = GetSpacing(listView);
-        var widgetArea = new RECT
-        {
-            Left = Math.Min(points[0].X, points[1].X),
-            Top = Math.Min(points[0].Y, points[1].Y),
-            Right = Math.Max(points[0].X, points[1].X),
-            Bottom = Math.Max(points[0].Y, points[1].Y)
-        };
+        var widgetArea = GetWidgetAreaInListView(widget, listView);
 
         GetClientRect(listView, out var client);
 
@@ -635,6 +628,11 @@ internal static class Program
 
     private static int Main(string[] args)
     {
+        // Explorer icon positions are device pixels. Make this helper Per-Monitor-V2
+        // aware before reading/mapping any HWND coordinates so WeekCal's exclusion
+        // rectangle uses the same coordinate system at 125/150/175/200% scaling.
+        SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
         if (args.Length < 6 || !long.TryParse(args[1], out var hwndValue)) return 64;
         if (!int.TryParse(args[2], out var x) || !int.TryParse(args[3], out var y) ||
             !int.TryParse(args[4], out var width) || !int.TryParse(args[5], out var height)) return 65;
@@ -648,23 +646,50 @@ internal static class Program
             {
                 var desktopSurface = FindDesktopListView();
                 if (desktopSurface == IntPtr.Zero) return 2;
+
+                if (!GetWindowRect(hwnd, out var beforeAttach))
+                    throw new InvalidOperationException("No se pudo obtener el tamaño físico de WeekCal.");
+
+                var actualWidth = Math.Max(1, beforeAttach.Right - beforeAttach.Left);
+                var actualHeight = Math.Max(1, beforeAttach.Bottom - beforeAttach.Top);
+                var parentPoint = new[] { new POINT { X = beforeAttach.Left, Y = beforeAttach.Top } };
+
                 SetChildStyle(hwnd, true);
                 SetParent(hwnd, desktopSurface);
-                var parentPoint = new[] { new POINT { X = x, Y = y } };
                 MapWindowPoints(IntPtr.Zero, desktopSurface, parentPoint, 1);
-                SetWindowPos(hwnd, IntPtr.Zero, parentPoint[0].X, parentPoint[0].Y, width, height,
+                SetWindowPos(hwnd, IntPtr.Zero, parentPoint[0].X, parentPoint[0].Y, actualWidth, actualHeight,
                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-                Console.WriteLine("attached");
+
+                Console.WriteLine(JsonSerializer.Serialize(new
+                {
+                    attached = true,
+                    width = actualWidth,
+                    height = actualHeight,
+                    dpi = GetDpiForWindow(hwnd)
+                }));
                 return 0;
             }
 
             if (command == "detach")
             {
+                if (!GetWindowRect(hwnd, out var beforeDetach))
+                    throw new InvalidOperationException("No se pudo obtener la posición física de WeekCal.");
+
+                var actualWidth = Math.Max(1, beforeDetach.Right - beforeDetach.Left);
+                var actualHeight = Math.Max(1, beforeDetach.Bottom - beforeDetach.Top);
+
                 SetParent(hwnd, IntPtr.Zero);
                 SetChildStyle(hwnd, false);
-                SetWindowPos(hwnd, IntPtr.Zero, x, y, width, height,
+                SetWindowPos(hwnd, IntPtr.Zero, beforeDetach.Left, beforeDetach.Top, actualWidth, actualHeight,
                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-                Console.WriteLine("detached");
+
+                Console.WriteLine(JsonSerializer.Serialize(new
+                {
+                    detached = true,
+                    width = actualWidth,
+                    height = actualHeight,
+                    dpi = GetDpiForWindow(hwnd)
+                }));
                 return 0;
             }
 
