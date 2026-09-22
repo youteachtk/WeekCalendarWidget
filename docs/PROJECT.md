@@ -122,3 +122,15 @@ En la conexión de Google Calendar disponible durante el desarrollo se detectaro
 - The original PC may continue using its legacy client secret path for compatibility.
 - End users never select an OAuth JSON file.
 - Because the Google app remains private/testing, only accounts authorized in that Google OAuth project can complete sign-in.
+
+
+## WeekCal 0.5.4 central authorization
+- Deployment option B selected: Google OAuth moves to In Production, while WeekCal maintains its own central allowlist.
+- WeekCal uses a dedicated Cloudflare Worker + KV only for authorization; Classroom Games remains on Firebase and is not modified.
+- Sign-in is two-stage: identify account first, check allowlist, then request Google Calendar permissions only for an authorized account.
+- The account is checked again after Calendar consent and connected sessions are periodically revalidated.
+- Administrators can add or remove authorized emails from WeekCal Settings without rebuilding or reinstalling the application.
+- Initial administrators are bootstrapped by hashes so their email addresses are not published in the public repository.
+- The Windows installer packages the deployed Worker URL automatically.
+- Required repository secrets for deployment are `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`.
+- Current blocker: those two Cloudflare secrets are not yet configured in the WeekCalendarWidget repository.
