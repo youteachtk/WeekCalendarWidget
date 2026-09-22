@@ -68,13 +68,26 @@ test('candidate icon cells cover the Explorer desktop grid', () => {
 });
 
 
-test('widget screen rectangle is mapped into Explorer coordinates before reflow', () => {
-  assert.match(source, /GetWindowRect\(widget,\s*out var widgetRect\)/);
-  assert.match(source, /MapWindowPoints\(IntPtr\.Zero,\s*listView,\s*points,\s*2\)/);
+test('widget client rectangle is mapped directly into Explorer coordinates before reflow', () => {
+  assert.match(source, /GetWidgetAreaInListView\s*\(widget,\s*listView\)/);
+  assert.match(source, /GetClientRect\(widget,\s*out var local\)/);
+  assert.match(source, /MapWindowPoints\(widget,\s*listView,\s*points,\s*2\)/);
 });
 
-test('old icon reservation snapshots are invalidated before the 0.5.1 reflow algorithm', () => {
-  assert.match(source, /public int Version \{ get; set; \} = 4/);
-  assert.match(source, /existing\.Version >= 4/);
+test('old icon reservation snapshots are invalidated before the DPI-aware reflow algorithm', () => {
+  assert.match(source, /public int Version \{ get; set; \} = 5/);
+  assert.match(source, /existing\.Version >= 5/);
   assert.match(source, /existingValid/);
+});
+
+test('DesktopHost uses Per-Monitor-V2 DPI awareness before reading window coordinates', () => {
+  assert.match(source, /DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2/);
+  assert.match(source, /SetProcessDpiAwarenessContext\(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2\)/);
+  assert.match(source, /GetDpiForWindow\(hwnd\)/);
+});
+
+test('attach keeps the actual native pixel size instead of Electron DIP arguments', () => {
+  assert.match(source, /GetWindowRect\(hwnd,\s*out var beforeAttach\)/);
+  assert.match(source, /actualWidth = Math\.Max\(1, beforeAttach\.Right - beforeAttach\.Left\)/);
+  assert.match(source, /SetWindowPos\(hwnd,[\s\S]{0,300}actualWidth, actualHeight/);
 });
