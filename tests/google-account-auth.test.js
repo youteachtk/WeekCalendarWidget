@@ -103,3 +103,16 @@ test('legacy desktop OAuth preserves the callback route that previously worked o
   assert.match(main, /http:\/\/127\.0\.0\.1:\$\{port\}\/oauth2callback/);
   assert.match(main, /http:\/\/127\.0\.0\.1:\$\{port\}/);
 });
+
+
+test('fresh installations contain the recovered WeekCal Google client ID', () => {
+  assert.match(main, /DEFAULT_GOOGLE_CLIENT_ID\s*=\s*['"]761061579107-v9jis3ikqluqo1ghrb16antp1e4qoitv\.apps\.googleusercontent\.com['"]/);
+  assert.match(main, /process\.env\.WEEKCAL_GOOGLE_CLIENT_ID \|\| DEFAULT_GOOGLE_CLIENT_ID/);
+});
+
+test('fresh-PC OAuth uses PKCE without requiring the old JSON or client secret', () => {
+  assert.match(main, /ClientAuthentication\.None/);
+  assert.match(main, /generateCodeVerifierAsync\s*\(/);
+  assert.match(main, /CodeChallengeMethod\.S256/);
+  assert.match(main, /http:\/\/127\.0\.0\.1:\$\{port\}/);
+});
