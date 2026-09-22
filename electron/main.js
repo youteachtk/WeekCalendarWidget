@@ -8,7 +8,6 @@ const { OAuth2Client, ClientAuthentication, CodeChallengeMethod } = require('goo
 
 const APP_NAME = 'WeekCal Widget';
 const DEFAULT_GOOGLE_CLIENT_ID = '761061579107-v9jis3ikqluqo1ghrb16antp1e4qoitv.apps.googleusercontent.com';
-const GOOGLE_IDENTITY_SCOPES = ['openid', 'email'];
 const GOOGLE_CALENDAR_SCOPES = [
   'openid',
   'email',
@@ -347,8 +346,6 @@ async function performOAuthGrant(credentials, {
   accessType = 'offline',
   prompt = ''
 } = {}) {
-  const useLegacyDesktopCredentials = Boolean(credentials.client_secret);
-
   return new Promise((resolve, reject) => {
     const expectedState = crypto.randomBytes(24).toString('hex');
     let pkce = null;
@@ -420,9 +417,7 @@ async function performOAuthGrant(credentials, {
     server.listen(0, '127.0.0.1', async () => {
       try {
         const port = server.address().port;
-        const redirectUri = useLegacyDesktopCredentials
-          ? `http://127.0.0.1:${port}/oauth2callback`
-          : `http://127.0.0.1:${port}`;
+        const redirectUri = `http://127.0.0.1:${port}`;
 
         const client = createOAuthClient(credentials, redirectUri, { persistTokens: false });
 
