@@ -15,11 +15,11 @@ test('Google login no longer asks the user to choose an OAuth JSON file', () => 
   assert.match(html, /Conectar con Google/);
 });
 
-test('WeekCal reuses one private Google desktop client ID for every installation', () => {
+test('WeekCal reuses one Google desktop OAuth client configuration for every installation', () => {
   assert.match(main, /google-app-config\.generated\.json/);
   assert.match(workflow, /WEEKCAL_GOOGLE_CLIENT_ID/);
   assert.match(workflow, /vars\.WEEKCAL_GOOGLE_CLIENT_ID/);
-  assert.doesNotMatch(workflow, /WEEKCAL_GOOGLE_CLIENT_SECRET/);
+  assert.match(workflow, /secrets\.WEEKCAL_GOOGLE_CLIENT_SECRET/);
   assert.match(workflow, /google-app-config\.generated\.json/);
 });
 
