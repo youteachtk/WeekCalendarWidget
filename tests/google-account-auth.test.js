@@ -49,17 +49,21 @@ test('Google account can be switched without mixing calendar selection', () => {
   assert.match(html, /Cambiar cuenta/);
 });
 
-test('OAuth flow verifies state and requests email identity', () => {
+test('OAuth flow verifies state and keeps the original Calendar scope set', () => {
   assert.match(main, /crypto\.randomBytes/);
   assert.match(main, /returnedState\s*!==\s*expectedState/);
-  assert.match(main, /'openid'/);
-  assert.match(main, /'email'/);
+  assert.doesNotMatch(main, /'openid'/);
+  assert.doesNotMatch(main, /'email'/);
+  assert.match(main, /calendar\.events/);
+  assert.match(main, /calendar\.calendarlist\.readonly/);
   assert.match(main, /accountEmail/);
 });
 
-test('refresh tokens require Electron safeStorage', () => {
-  assert.match(main, /requireEncryption:\s*true/);
-  assert.match(main, /Windows no ofrece almacenamiento seguro/);
+test('legacy Google tokens are accepted and migrated to Electron safeStorage', () => {
+  assert.match(main, /const token = readSecure\('google-token\.secure\.json'\)/);
+  assert.match(main, /record\?\.encrypted !== true/);
+  assert.match(main, /safeStorage\.isEncryptionAvailable\(\)/);
+  assert.match(main, /saveSecure\('google-token\.secure\.json', token, \{ requireEncryption: true \}\)/);
 });
 
 test('disconnected WeekCal contains no bundled demo timetable', () => {
