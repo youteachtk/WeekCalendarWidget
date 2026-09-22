@@ -89,6 +89,20 @@
           <button id="copyGoogleClientId" class="secondary-btn">Copiar Client ID</button>
         </div>
         <div id="calendarChooser" class="calendar-chooser"></div>
+
+        <div id="weekcalAdmin" class="weekcal-admin hidden">
+          <div class="weekcal-admin-title">
+            <div>
+              <strong>Usuarios autorizados</strong>
+              <small>Agrega cuentas que podrán iniciar sesión en WeekCal.</small>
+            </div>
+          </div>
+          <div class="weekcal-admin-add">
+            <input id="authorizedUserEmail" type="email" placeholder="correo@gmail.com" autocomplete="off" />
+            <button id="addAuthorizedUser" class="primary-btn">Agregar</button>
+          </div>
+          <div id="authorizedUsersList" class="authorized-users-list"></div>
+        </div>
       </div>
 
       <div class="setting-section window-section">
