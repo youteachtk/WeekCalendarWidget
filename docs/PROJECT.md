@@ -134,3 +134,12 @@ En la conexión de Google Calendar disponible durante el desarrollo se detectaro
 - The Windows installer packages the deployed Worker URL automatically.
 - Required repository secrets for deployment are `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`.
 - Current blocker: those two Cloudflare secrets are not yet configured in the WeekCalendarWidget repository.
+
+
+## WeekCal 0.5.4 deployment result
+- Dedicated Cloudflare authorization Worker is live at `https://weekcal-auth.youteach-tk.workers.dev`.
+- CI health check passed.
+- KV authorization storage is active.
+- Windows 0.5.4 installer packages the authorization service URL.
+- Verified installer SHA-256: `f9518d8460fd83102dbaac40691b4522964d630381a83d5215c189820ae96b3d`.
+- PR remains unmerged until second-PC sign-in and allowlist administration are validated.
