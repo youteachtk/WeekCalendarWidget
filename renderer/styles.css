@@ -224,3 +224,16 @@ input[type="checkbox"] { width:18px; height:18px; accent-color:#7b83ff; }
 .disconnected-empty-state strong { font-size:15px; }
 .disconnected-empty-state span { color:var(--muted); font-size:11px; line-height:1.45; }
 .disconnected-empty-state .primary-btn { margin-top:4px; }
+
+.weekcal-admin { margin-top:14px; padding-top:13px; border-top:1px solid rgba(255,255,255,.08); }
+.weekcal-admin-title { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+.weekcal-admin-title strong { font-size:12px; }
+.weekcal-admin-title small { display:block; margin-top:3px; color:#858f9f; font-size:10px; line-height:1.4; }
+.weekcal-admin-add { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:7px; margin-top:10px; }
+.weekcal-admin-add input { min-width:0; background:#252a34; color:#f4f6f9; border:1px solid #373e4b; border-radius:8px; padding:8px 9px; outline:none; }
+.weekcal-admin-add input:focus { border-color:#6e7cff; }
+.authorized-users-list { display:flex; flex-direction:column; gap:6px; margin-top:9px; }
+.authorized-user-row { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:7px; padding:7px 8px; border-radius:7px; background:#1d212a; }
+.authorized-user-email { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; }
+.authorized-user-badge { color:#7f8cff; font-size:9px; text-transform:uppercase; letter-spacing:.45px; }
+.authorized-user-remove { border:0; background:transparent; color:#ff9ca3; font-size:10px; text-decoration:underline; padding:3px 0; }
