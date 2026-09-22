@@ -165,10 +165,16 @@ function createWindow() {
 
 function getPackagedGoogleCredentials() {
   const generated = readJson(path.join(__dirname, 'google-app-config.generated.json'), null);
-  if (generated?.client_id) return { client_id: generated.client_id };
+  if (generated?.client_id) {
+    return {
+      client_id: generated.client_id,
+      client_secret: generated.client_secret || ''
+    };
+  }
 
   const clientId = process.env.WEEKCAL_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID;
-  return clientId ? { client_id: clientId } : null;
+  const clientSecret = process.env.WEEKCAL_GOOGLE_CLIENT_SECRET || '';
+  return clientId ? { client_id: clientId, client_secret: clientSecret } : null;
 }
 
 function getWeekCalAuthUrl() {
