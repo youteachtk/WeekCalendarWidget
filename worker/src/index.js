@@ -92,16 +92,34 @@ async function verifyAccessToken(env, accessToken) {
   const tokenInfo = await tokenInfoResponse.json();
   assertAudience(tokenInfo, env);
 
+  let userInfo = null;
+  let email = '';
+
   const userInfoResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
     headers: { authorization: 'Bearer ' + accessToken }
   });
-  if (!userInfoResponse.ok) throw new Error('Google no pudo identificar la cuenta conectada.');
 
-  const userInfo = await userInfoResponse.json();
-  const email = normalizeEmail(userInfo.email);
-  if (!email || userInfo.email_verified !== true) {
-    throw new Error('Google no pudo verificar el correo de esta cuenta.');
+  if (userInfoResponse.ok) {
+    userInfo = await userInfoResponse.json();
+    if (userInfo.email_verified === true) email = normalizeEmail(userInfo.email);
   }
+
+  // Older WeekCal tokens were issued without openid/email. They still identify
+  // the account cryptographically through the token's audience, and Calendar's
+  // primary calendar ID is the Google account email for these installations.
+  if (!email) {
+    const calendarsResponse = await fetch(
+      'https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250&showHidden=true',
+      { headers: { authorization: 'Bearer ' + accessToken } }
+    );
+
+    if (calendarsResponse.ok) {
+      const calendars = await calendarsResponse.json();
+      email = normalizeEmail((calendars.items || []).find(item => item.primary)?.id || '');
+    }
+  }
+
+  if (!email) throw new Error('Google no pudo identificar la cuenta conectada.');
 
   return { email, tokenInfo, userInfo };
 }
