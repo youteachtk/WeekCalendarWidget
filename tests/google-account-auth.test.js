@@ -23,12 +23,17 @@ test('WeekCal reuses one private Google desktop client ID for every installation
   assert.match(workflow, /google-app-config\.generated\.json/);
 });
 
-test('private desktop OAuth uses PKCE and can migrate the legacy local client ID', () => {
+test('recovered legacy desktop credentials use the original secret-based OAuth flow', () => {
+  assert.match(main, /useLegacyDesktopCredentials/);
+  assert.match(main, /new google\.auth\.OAuth2\(credentials\.client_id, credentials\.client_secret, redirectUri\)/);
+  assert.match(main, /oauth2callback/);
+  assert.match(main, /tokenResult = await oauthClient\.getToken\(code\)/);
+});
+
+test('client-id-only builds keep PKCE as a fallback', () => {
   assert.match(main, /generateCodeVerifierAsync\s*\(/);
   assert.match(main, /CodeChallengeMethod\.S256/);
   assert.match(main, /ClientAuthentication\.None/);
-  assert.match(main, /getLegacyCredentialsRecord/);
-  assert.match(main, /legacy\?\.client_id/);
 });
 
 test('installed users are never asked to provide OAuth credentials', () => {
@@ -73,7 +78,7 @@ test('disconnected empty state asks the user to connect Google instead of showin
 });
 
 
-test('legacy Google client ID can be recovered without exposing the old secret', () => {
+test('legacy Google integration can be recovered locally while only copying its client ID to the UI', () => {
   assert.match(main, /getLegacyCredentialsRecord/);
   assert.match(main, /clientIdRecoverable/);
   assert.match(main, /google:copy-client-id/);
@@ -89,8 +94,8 @@ test('Windows installer can be built before the recovered client ID is added to 
 });
 
 
-test("desktop loopback redirect uses Google documented root URI without an extra callback path", () => {
+test('legacy desktop OAuth preserves the callback route that previously worked on this PC', () => {
+  assert.match(main, /useLegacyDesktopCredentials \? '\/oauth2callback' : '\/'/);
+  assert.match(main, /http:\/\/127\.0\.0\.1:\$\{port\}\/oauth2callback/);
   assert.match(main, /http:\/\/127\.0\.0\.1:\$\{port\}/);
-  assert.match(main, /u\.pathname !== '\/'/);
-  assert.doesNotMatch(main, /oauth2callback/);
 });
