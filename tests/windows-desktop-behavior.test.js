@@ -16,14 +16,9 @@ test('Windows 11 24H2+ uses the shell window as the desktop host', () => {
   );
 });
 
-test('desktop reservation moves only icons that actually intersect WeekCal', () => {
-  assert.match(source, /detectedOverlaps/);
+test('desktop reservation reflows the current Explorer layout around WeekCal', () => {
+  assert.match(source, /ArrangeIconsAroundWidget\(listView,\s*currentPositions,\s*candidates,\s*currentCount\)/);
   assert.match(source, /CorrectRemainingOverlaps\s*\(/);
-  assert.doesNotMatch(
-    source,
-    /ArrangeIconsAroundWidget\(listView,\s*state\.Positions/,
-    'reservation must not replay the old full-grid reflow snapshot before measuring overlaps'
-  );
 });
 
 test('full icon reflow is independent of the original Auto Arrange state', () => {
@@ -67,20 +62,19 @@ test('icon reservation derives the grid from the current Explorer positions', ()
   assert.match(source, /FindGridAnchor\(currentPositions,\s*spacing\)/);
 });
 
-test('candidate icon cells must fit completely inside the desktop client area', () => {
-  assert.match(source, /x\s*\+\s*spacing\.X\s*<=\s*client\.Right/);
-  assert.match(source, /y\s*\+\s*spacing\.Y\s*<=\s*client\.Bottom/);
+test('candidate icon cells cover the Explorer desktop grid', () => {
+  assert.match(source, /for \(var x = anchorX; x < client\.Right; x \+= spacing\.X\)/);
+  assert.match(source, /for \(var y = anchorY; y < client\.Bottom; y \+= spacing\.Y\)/);
 });
 
 
-test('widget area is mapped directly from WeekCal client coordinates into the desktop list view', () => {
-  assert.match(source, /GetWidgetAreaInListView\s*\(/);
-  assert.match(source, /GetClientRect\(widget,\s*out var local\)/);
-  assert.match(source, /MapWindowPoints\(widget,\s*listView,\s*points,\s*2\)/);
+test('widget screen rectangle is mapped into Explorer coordinates before reflow', () => {
+  assert.match(source, /GetWindowRect\(widget,\s*out var widgetRect\)/);
+  assert.match(source, /MapWindowPoints\(IntPtr\.Zero,\s*listView,\s*points,\s*2\)/);
 });
 
-test('old icon reservation snapshots are invalidated', () => {
-  assert.match(source, /public int Version \{ get; set; \} = 2/);
-  assert.match(source, /existing\.Version >= 2/);
-  assert.match(source, /recreateSnapshot/);
+test('old icon reservation snapshots are invalidated before the restored reflow algorithm', () => {
+  assert.match(source, /public int Version \{ get; set; \} = 3/);
+  assert.match(source, /existing\.Version >= 3/);
+  assert.match(source, /existingValid/);
 });
