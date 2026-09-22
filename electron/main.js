@@ -254,7 +254,7 @@ async function performOAuth(credentials, { selectAccount = true } = {}) {
     const server = http.createServer(async (req, res) => {
       try {
         const u = new URL(req.url, 'http://127.0.0.1');
-        if (u.pathname !== '/oauth2callback') {
+        if (u.pathname !== '/' && u.pathname !== '') {
           res.writeHead(404); res.end('Not found'); return;
         }
         const code = u.searchParams.get('code');
@@ -265,7 +265,7 @@ async function performOAuth(credentials, { selectAccount = true } = {}) {
         if (!code) throw new Error('Google no devolvió el código de autorización.');
 
         if (!pkce?.codeVerifier) throw new Error('No se pudo validar el inicio de sesión seguro con Google.');
-        const redirectUri = `http://127.0.0.1:${server.address().port}/oauth2callback`;
+        const redirectUri = `http://127.0.0.1:${server.address().port}`;
         oauthClient = createOAuthClient(credentials, redirectUri);
         const { tokens } = await oauthClient.getToken({
           code,
@@ -292,7 +292,7 @@ async function performOAuth(credentials, { selectAccount = true } = {}) {
     server.listen(0, '127.0.0.1', async () => {
       try {
         const port = server.address().port;
-        const redirectUri = `http://127.0.0.1:${port}/oauth2callback`;
+        const redirectUri = `http://127.0.0.1:${port}`;
         oauthClient = createOAuthClient(credentials, redirectUri);
         pkce = await oauthClient.generateCodeVerifierAsync();
         const authUrl = oauthClient.generateAuthUrl({
