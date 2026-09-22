@@ -10,7 +10,7 @@ const defaults = {
   theme: 'dark'
 };
 
-test('legacy persisted reserveIconSpace=true is disabled unless user explicitly opted in', () => {
+test('legacy persisted reserveIconSpace=true is preserved during migration', () => {
   const actual = normalizeExtraSettings({
     desktopMode: true,
     reserveIconSpace: true,
@@ -18,8 +18,8 @@ test('legacy persisted reserveIconSpace=true is disabled unless user explicitly 
     theme: 'dark'
   }, defaults);
 
-  assert.equal(actual.reserveIconSpace, false);
-  assert.equal(actual.reserveIconSpaceExplicitlyEnabled, false);
+  assert.equal(actual.reserveIconSpace, true);
+  assert.equal(actual.reserveIconSpaceExplicitlyEnabled, true);
 });
 
 test('explicit user opt-in preserves icon reservation across restarts', () => {
