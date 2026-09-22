@@ -146,3 +146,11 @@ test('installed-app OAuth never sends unsupported incremental authorization', ()
   assert.match(main, /GOOGLE_IDENTITY_SCOPES/);
   assert.match(main, /GOOGLE_CALENDAR_SCOPES/);
 });
+
+
+test('fresh-PC package carries desktop client secret from Actions secret', () => {
+  assert.match(main, /generated\.client_secret/);
+  assert.match(main, /WEEKCAL_GOOGLE_CLIENT_SECRET/);
+  assert.match(workflow, /secrets\.WEEKCAL_GOOGLE_CLIENT_SECRET/);
+  assert.match(workflow, /client_secret\s*=\s*\$env:WEEKCAL_GOOGLE_CLIENT_SECRET/);
+});
