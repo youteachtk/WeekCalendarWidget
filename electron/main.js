@@ -8,7 +8,10 @@ const { OAuth2Client, ClientAuthentication, CodeChallengeMethod } = require('goo
 
 const APP_NAME = 'WeekCal Widget';
 const DEFAULT_GOOGLE_CLIENT_ID = '761061579107-v9jis3ikqluqo1ghrb16antp1e4qoitv.apps.googleusercontent.com';
-const GOOGLE_SCOPES = [
+const GOOGLE_IDENTITY_SCOPES = ['openid', 'email'];
+const GOOGLE_CALENDAR_SCOPES = [
+  'openid',
+  'email',
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/calendar.calendarlist.readonly'
 ];
@@ -28,6 +31,7 @@ const SETTINGS_DEFAULTS = {
 let mainWindow = null;
 let settings = null;
 let oauthClient = null;
+let authorizationCache = null;
 
 function appendCrashLog(label, details = '') {
   try {
@@ -167,6 +171,45 @@ function getPackagedGoogleCredentials() {
   return clientId ? { client_id: clientId } : null;
 }
 
+function getWeekCalAuthUrl() {
+  const generated = readJson(path.join(__dirname, 'weekcal-auth-config.generated.json'), null);
+  const raw = generated?.auth_url || process.env.WEEKCAL_AUTH_URL || '';
+  return String(raw).trim().replace(/\/+$/, '');
+}
+
+function requireWeekCalAuthUrl() {
+  const url = getWeekCalAuthUrl();
+  if (!url) throw new Error('El servicio de autorización de WeekCal no está configurado.');
+  return url;
+}
+
+async function authServiceRequest(pathname, {
+  method = 'POST',
+  body = null,
+  accessToken = ''
+} = {}) {
+  const base = requireWeekCalAuthUrl();
+  const headers = { 'content-type': 'application/json' };
+  if (accessToken) headers.authorization = 'Bearer ' + accessToken;
+
+  const response = await fetch(base + pathname, {
+    method,
+    headers,
+    body: body === null ? undefined : JSON.stringify(body)
+  });
+
+  let data = {};
+  try { data = await response.json(); } catch {}
+
+  if (!response.ok) {
+    throw new Error(data?.error || (response.status === 403
+      ? 'Esta cuenta no está autorizada para usar WeekCal.'
+      : 'No se pudo validar el acceso a WeekCal.'));
+  }
+
+  return data;
+}
+
 function getLegacyCredentialsRecord() {
   return readSecure('google-credentials.secure.json');
 }
@@ -212,7 +255,7 @@ function bc2ColorFromDescription(description = '') {
   }
 }
 
-function createOAuthClient(credentials, redirectUri) {
+function createOAuthClient(credentials, redirectUri, { persistTokens = true } = {}) {
   const client = credentials.client_secret
     ? new google.auth.OAuth2(credentials.client_id, credentials.client_secret, redirectUri)
     : new OAuth2Client({
@@ -220,12 +263,16 @@ function createOAuthClient(credentials, redirectUri) {
         redirectUri,
         clientAuthentication: ClientAuthentication.None
       });
-  const token = getTokenRecord();
-  if (token) client.setCredentials(token);
-  client.on('tokens', (tokens) => {
-    const merged = { ...(getTokenRecord() || {}), ...tokens };
-    saveSecure('google-token.secure.json', merged, { requireEncryption: true });
-  });
+
+  if (persistTokens) {
+    const token = getTokenRecord();
+    if (token) client.setCredentials(token);
+    client.on('tokens', (tokens) => {
+      const merged = { ...(getTokenRecord() || {}), ...tokens };
+      saveSecure('google-token.secure.json', merged, { requireEncryption: true });
+    });
+  }
+
   return client;
 }
 
@@ -235,6 +282,39 @@ async function ensureOAuthClient() {
   if (!creds) return null;
   oauthClient = createOAuthClient(creds, 'http://127.0.0.1');
   return oauthClient;
+}
+
+async function ensureAuthorizedOAuthClient({ force = false } = {}) {
+  const client = await ensureOAuthClient();
+  if (!client) return null;
+
+  const now = Date.now();
+  if (!force && authorizationCache?.expiresAt > now) return client;
+
+  const access = await client.getAccessToken();
+  const accessToken = typeof access === 'string' ? access : access?.token;
+  if (!accessToken) throw new Error('La sesión de Google ya no es válida.');
+
+  const auth = await authServiceRequest('/api/check-access', {
+    body: { accessToken }
+  });
+
+  authorizationCache = {
+    email: String(auth.email || ''),
+    admin: Boolean(auth.admin),
+    expiresAt: now + 5 * 60 * 1000
+  };
+
+  return client;
+}
+
+async function getAuthorizedAccessToken() {
+  const client = await ensureAuthorizedOAuthClient();
+  if (!client) throw new Error('Google Calendar no está conectado.');
+  const access = await client.getAccessToken();
+  const token = typeof access === 'string' ? access : access?.token;
+  if (!token) throw new Error('La sesión de Google ya no es válida.');
+  return token;
 }
 
 async function getConnectedGoogleEmail(client) {
@@ -253,7 +333,14 @@ async function getConnectedGoogleEmail(client) {
   }
 }
 
-async function performOAuth(credentials, { selectAccount = true } = {}) {
+async function performOAuthGrant(credentials, {
+  scopes,
+  selectAccount = true,
+  loginHint = '',
+  persistTokens = false,
+  accessType = 'offline',
+  prompt = ''
+} = {}) {
   const useLegacyDesktopCredentials = Boolean(credentials.client_secret);
 
   return new Promise((resolve, reject) => {
@@ -286,9 +373,7 @@ async function performOAuth(credentials, { selectAccount = true } = {}) {
         if (returnedState !== expectedState) {
           throw new Error('La respuesta de Google no corresponde al inicio de sesión actual.');
         }
-        if (err) {
-          throw new Error(errDescription ? `${err}: ${errDescription}` : err);
-        }
+        if (err) throw new Error(errDescription ? `${err}: ${errDescription}` : err);
         if (!code) throw new Error('Google no devolvió el código de autorización.');
 
         const port = server.address().port;
@@ -296,14 +381,14 @@ async function performOAuth(credentials, { selectAccount = true } = {}) {
           ? `http://127.0.0.1:${port}/oauth2callback`
           : `http://127.0.0.1:${port}`;
 
-        oauthClient = createOAuthClient(credentials, redirectUri);
+        const client = createOAuthClient(credentials, redirectUri, { persistTokens: false });
 
         let tokenResult;
         if (useLegacyDesktopCredentials) {
-          tokenResult = await oauthClient.getToken(code);
+          tokenResult = await client.getToken(code);
         } else {
           if (!pkce?.codeVerifier) throw new Error('No se pudo validar el inicio de sesión seguro con Google.');
-          tokenResult = await oauthClient.getToken({
+          tokenResult = await client.getToken({
             code,
             codeVerifier: pkce.codeVerifier,
             redirect_uri: redirectUri,
@@ -311,15 +396,16 @@ async function performOAuth(credentials, { selectAccount = true } = {}) {
           });
         }
 
-        const storedTokens = { ...tokenResult.tokens, weekcalWriteEnabled: true };
-        oauthClient.setCredentials(storedTokens);
-        saveSecure('google-token.secure.json', storedTokens, { requireEncryption: true });
-        saveSettings({ selectedCalendars: [] });
-        const accountEmail = await getConnectedGoogleEmail(oauthClient);
+        const tokens = tokenResult.tokens || {};
+        client.setCredentials(tokens);
+
+        if (persistTokens) {
+          saveSecure('google-token.secure.json', tokens, { requireEncryption: true });
+        }
 
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end('<html><body style="font-family:Segoe UI;padding:40px;background:#111;color:#eee"><h2>WeekCal autorizado</h2><p>La cuenta quedó conectada. Ya puedes cerrar esta pestaña y volver al widget.</p></body></html>');
-        finish(resolve, { connected: true, writeEnabled: true, accountEmail });
+        res.end('<html><body style="font-family:Segoe UI;padding:40px;background:#111;color:#eee"><h2>WeekCal autorizado</h2><p>Puedes volver a WeekCal.</p></body></html>');
+        finish(resolve, { client, tokens });
       } catch (e) {
         res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end(e.message);
@@ -334,23 +420,24 @@ async function performOAuth(credentials, { selectAccount = true } = {}) {
           ? `http://127.0.0.1:${port}/oauth2callback`
           : `http://127.0.0.1:${port}`;
 
-        oauthClient = createOAuthClient(credentials, redirectUri);
+        const client = createOAuthClient(credentials, redirectUri, { persistTokens: false });
 
         const options = {
-          access_type: 'offline',
-          prompt: useLegacyDesktopCredentials ? 'consent' : (selectAccount ? 'select_account consent' : 'consent'),
+          access_type: accessType,
+          prompt: prompt || (selectAccount ? 'select_account' : 'consent'),
           include_granted_scopes: true,
-          scope: GOOGLE_SCOPES,
+          scope: scopes,
           state: expectedState
         };
+        if (loginHint) options.login_hint = loginHint;
 
         if (!useLegacyDesktopCredentials) {
-          pkce = await oauthClient.generateCodeVerifierAsync();
+          pkce = await client.generateCodeVerifierAsync();
           options.code_challenge = pkce.codeChallenge;
           options.code_challenge_method = CodeChallengeMethod.S256;
         }
 
-        const authUrl = oauthClient.generateAuthUrl(options);
+        const authUrl = client.generateAuthUrl(options);
         await shell.openExternal(authUrl);
       } catch (e) {
         finish(reject, e);
@@ -362,16 +449,82 @@ async function performOAuth(credentials, { selectAccount = true } = {}) {
   });
 }
 
+async function performAuthorizedOAuth(credentials, { selectAccount = true } = {}) {
+  // Stage 1: identify the Google account without requesting Calendar access.
+  const identityGrant = await performOAuthGrant(credentials, {
+    scopes: GOOGLE_IDENTITY_SCOPES,
+    selectAccount,
+    accessType: 'online',
+    prompt: selectAccount ? 'select_account' : 'consent'
+  });
+
+  const identityToken = identityGrant.tokens?.id_token;
+  if (!identityToken) throw new Error('Google no devolvió la identidad de la cuenta.');
+
+  const preflight = await authServiceRequest('/api/check-identity', {
+    body: { idToken: identityToken }
+  });
+
+  if (!preflight.authorized) {
+    throw new Error('Esta cuenta no está autorizada para usar WeekCal.');
+  }
+
+  const authorizedEmail = String(preflight.email || '').toLowerCase();
+
+  // Stage 2: only an authorized account is allowed to request Calendar access.
+  const calendarGrant = await performOAuthGrant(credentials, {
+    scopes: GOOGLE_CALENDAR_SCOPES,
+    selectAccount: false,
+    loginHint: authorizedEmail,
+    accessType: 'offline',
+    prompt: 'consent'
+  });
+
+  const finalIdentityToken = calendarGrant.tokens?.id_token;
+  if (!finalIdentityToken) throw new Error('Google no confirmó la identidad final de la cuenta.');
+
+  const finalCheck = await authServiceRequest('/api/check-identity', {
+    body: { idToken: finalIdentityToken }
+  });
+
+  const finalEmail = String(finalCheck.email || '').toLowerCase();
+  if (!finalCheck.authorized || finalEmail !== authorizedEmail) {
+    throw new Error('La cuenta autorizada cambió durante el inicio de sesión.');
+  }
+
+  const storedTokens = {
+    ...calendarGrant.tokens,
+    weekcalWriteEnabled: true,
+    weekcalAccountEmail: finalEmail
+  };
+
+  saveSecure('google-token.secure.json', storedTokens, { requireEncryption: true });
+  oauthClient = createOAuthClient(credentials, 'http://127.0.0.1');
+  oauthClient.setCredentials(storedTokens);
+  authorizationCache = {
+    email: finalEmail,
+    admin: Boolean(finalCheck.admin),
+    expiresAt: Date.now() + 5 * 60 * 1000
+  };
+  saveSettings({ selectedCalendars: [] });
+
+  return {
+    connected: true,
+    writeEnabled: true,
+    accountEmail: finalEmail,
+    isAdmin: Boolean(finalCheck.admin)
+  };
+}
+
 async function connectGoogle() {
   const creds = getCredentialsRecord();
-  if (!creds) {
-    throw new Error('WeekCal no encontró el Client ID de su integración de Google.');
-  }
-  return performOAuth(creds, { selectAccount: true });
+  if (!creds) throw new Error('WeekCal no encontró el Client ID de su integración de Google.');
+  return performAuthorizedOAuth(creds, { selectAccount: true });
 }
 
 async function switchGoogleAccount() {
   oauthClient = null;
+  authorizationCache = null;
   try { fs.unlinkSync(userFile('google-token.secure.json')); } catch {}
   saveSettings({ selectedCalendars: [] });
   return connectGoogle();
@@ -380,7 +533,7 @@ async function switchGoogleAccount() {
 async function authorizeGoogleWrite() {
   const creds = getCredentialsRecord();
   if (!creds) throw new Error('WeekCal no encontró el Client ID de su integración de Google.');
-  return performOAuth(creds, { selectAccount: false });
+  return performAuthorizedOAuth(creds, { selectAccount: false });
 }
 
 function tokenHasWriteScope() {
@@ -404,7 +557,7 @@ async function googleStatus() {
     clientIdRecoverable: integrationSource === 'legacy'
   };
   try {
-    const client = await ensureOAuthClient();
+    const client = await ensureAuthorizedOAuthClient();
     const cal = google.calendar({ version: 'v3', auth: client });
     const res = await cal.calendarList.list({ maxResults: 1 });
     const accountEmail = await getConnectedGoogleEmail(client);
@@ -412,7 +565,8 @@ async function googleStatus() {
       connected: true,
       calendarsKnown: Boolean(res.data.items?.length),
       writeEnabled: tokenHasWriteScope(),
-      accountEmail,
+      accountEmail: authorizationCache?.email || accountEmail,
+      isAdmin: Boolean(authorizationCache?.admin),
       integrationSource,
       clientIdRecoverable: integrationSource === 'legacy'
     };
@@ -421,8 +575,34 @@ async function googleStatus() {
   }
 }
 
+async function listAuthorizedWeekCalUsers() {
+  const accessToken = await getAuthorizedAccessToken();
+  return authServiceRequest('/api/admin/users', {
+    method: 'GET',
+    accessToken
+  });
+}
+
+async function addAuthorizedWeekCalUser(email) {
+  const accessToken = await getAuthorizedAccessToken();
+  return authServiceRequest('/api/admin/users', {
+    method: 'POST',
+    accessToken,
+    body: { email }
+  });
+}
+
+async function removeAuthorizedWeekCalUser(email) {
+  const accessToken = await getAuthorizedAccessToken();
+  return authServiceRequest('/api/admin/users', {
+    method: 'DELETE',
+    accessToken,
+    body: { email }
+  });
+}
+
 async function listGoogleCalendars() {
-  const client = await ensureOAuthClient();
+  const client = await ensureAuthorizedOAuthClient();
   if (!client) return [];
   const cal = google.calendar({ version: 'v3', auth: client });
   const res = await cal.calendarList.list({ maxResults: 250, showHidden: true });
@@ -439,7 +619,7 @@ async function listGoogleCalendars() {
 }
 
 async function fetchGoogleEvents({ timeMin, timeMax, calendarIds }) {
-  const client = await ensureOAuthClient();
+  const client = await ensureAuthorizedOAuthClient();
   if (!client) return { events: [], colors: {} };
   const cal = google.calendar({ version: 'v3', auth: client });
   const calendars = await listGoogleCalendars();
@@ -558,7 +738,7 @@ function buildEventResource(payload, includeRecurrence = false) {
 }
 
 async function listGoogleEventColors() {
-  const client = await ensureOAuthClient();
+  const client = await ensureAuthorizedOAuthClient();
   if (!client) return {};
   const cal = google.calendar({ version: 'v3', auth: client });
   const res = await cal.colors.get();
@@ -566,7 +746,7 @@ async function listGoogleEventColors() {
 }
 
 async function createGoogleEvent(payload) {
-  const client = await ensureOAuthClient();
+  const client = await ensureAuthorizedOAuthClient();
   if (!client) throw new Error('Google Calendar no está conectado.');
   if (!tokenHasWriteScope()) throw new Error('WRITE_AUTH_REQUIRED');
 
@@ -581,7 +761,7 @@ async function createGoogleEvent(payload) {
 }
 
 async function updateGoogleEvent(payload) {
-  const client = await ensureOAuthClient();
+  const client = await ensureAuthorizedOAuthClient();
   if (!client) throw new Error('Google Calendar no está conectado.');
   if (!tokenHasWriteScope()) throw new Error('WRITE_AUTH_REQUIRED');
   if (!payload.id) throw new Error('Falta el identificador del evento.');
@@ -598,7 +778,7 @@ async function updateGoogleEvent(payload) {
 }
 
 async function deleteGoogleEvent(payload) {
-  const client = await ensureOAuthClient();
+  const client = await ensureAuthorizedOAuthClient();
   if (!client) throw new Error('Google Calendar no está conectado.');
   if (!tokenHasWriteScope()) throw new Error('WRITE_AUTH_REQUIRED');
   if (!payload.id) throw new Error('Falta el identificador del evento.');
@@ -669,10 +849,14 @@ ipcMain.handle('google:switch-account', switchGoogleAccount);
 ipcMain.handle('google:authorize-write', authorizeGoogleWrite);
 ipcMain.handle('google:disconnect', () => {
   oauthClient = null;
+  authorizationCache = null;
   try { fs.unlinkSync(userFile('google-token.secure.json')); } catch {}
   saveSettings({ selectedCalendars: [] });
   return { connected: false };
 });
+ipcMain.handle('weekcal-auth:list-users', listAuthorizedWeekCalUsers);
+ipcMain.handle('weekcal-auth:add-user', (_e, email) => addAuthorizedWeekCalUser(email));
+ipcMain.handle('weekcal-auth:remove-user', (_e, email) => removeAuthorizedWeekCalUser(email));
 ipcMain.handle('google:list-calendars', listGoogleCalendars);
 ipcMain.handle('google:list-event-colors', listGoogleEventColors);
 ipcMain.handle('google:get-events', (_e, args) => fetchGoogleEvents(args));
