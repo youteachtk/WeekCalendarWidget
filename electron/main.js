@@ -425,7 +425,6 @@ async function performOAuthGrant(credentials, {
         const options = {
           access_type: accessType,
           prompt: prompt || (selectAccount ? 'select_account' : 'consent'),
-          include_granted_scopes: true,
           scope: scopes,
           state: expectedState
         };
