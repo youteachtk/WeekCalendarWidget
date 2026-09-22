@@ -7,6 +7,7 @@ const { google } = require('googleapis');
 const { OAuth2Client, ClientAuthentication, CodeChallengeMethod } = require('google-auth-library');
 
 const APP_NAME = 'WeekCal Widget';
+const DEFAULT_GOOGLE_CLIENT_ID = '761061579107-v9jis3ikqluqo1ghrb16antp1e4qoitv.apps.googleusercontent.com';
 const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/calendar.calendarlist.readonly'
@@ -162,9 +163,8 @@ function getPackagedGoogleCredentials() {
   const generated = readJson(path.join(__dirname, 'google-app-config.generated.json'), null);
   if (generated?.client_id) return { client_id: generated.client_id };
 
-  const clientId = process.env.WEEKCAL_GOOGLE_CLIENT_ID;
-  if (clientId) return { client_id: clientId };
-  return null;
+  const clientId = process.env.WEEKCAL_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID;
+  return clientId ? { client_id: clientId } : null;
 }
 
 function getLegacyCredentialsRecord() {
