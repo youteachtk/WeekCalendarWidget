@@ -174,13 +174,16 @@ function getLegacyCredentialsRecord() {
 }
 
 function getCredentialsRecord() {
-  const packaged = getPackagedGoogleCredentials();
-  if (packaged) return packaged;
-
-  // Migration path for the PC that originally connected with the downloaded JSON.
-  // We only reuse its client_id; no JSON picker or client secret is required.
   const legacy = getLegacyCredentialsRecord();
-  return legacy?.client_id ? { client_id: legacy.client_id } : null;
+  if (legacy?.client_id) {
+    return {
+      client_id: legacy.client_id,
+      client_secret: legacy.client_secret || ''
+    };
+  }
+
+  const packaged = getPackagedGoogleCredentials();
+  return packaged?.client_id ? { client_id: packaged.client_id } : null;
 }
 
 function getTokenRecord() {
@@ -201,11 +204,13 @@ function bc2ColorFromDescription(description = '') {
 }
 
 function createOAuthClient(credentials, redirectUri) {
-  const client = new OAuth2Client({
-    clientId: credentials.client_id,
-    redirectUri,
-    clientAuthentication: ClientAuthentication.None
-  });
+  const client = credentials.client_secret
+    ? new google.auth.OAuth2(credentials.client_id, credentials.client_secret, redirectUri)
+    : new OAuth2Client({
+        clientId: credentials.client_id,
+        redirectUri,
+        clientAuthentication: ClientAuthentication.None
+      });
   const token = getTokenRecord();
   if (token) client.setCredentials(token);
   client.on('tokens', (tokens) => {
@@ -240,10 +245,13 @@ async function getConnectedGoogleEmail(client) {
 }
 
 async function performOAuth(credentials, { selectAccount = true } = {}) {
+  const useLegacyDesktopCredentials = Boolean(credentials.client_secret);
+
   return new Promise((resolve, reject) => {
     const expectedState = crypto.randomBytes(24).toString('hex');
     let pkce = null;
     let settled = false;
+
     const finish = (fn, value) => {
       if (settled) return;
       settled = true;
@@ -254,26 +262,47 @@ async function performOAuth(credentials, { selectAccount = true } = {}) {
     const server = http.createServer(async (req, res) => {
       try {
         const u = new URL(req.url, 'http://127.0.0.1');
-        if (u.pathname !== '/' && u.pathname !== '') {
-          res.writeHead(404); res.end('Not found'); return;
+        const expectedPath = useLegacyDesktopCredentials ? '/oauth2callback' : '/';
+        if (u.pathname !== expectedPath && !(expectedPath === '/' && u.pathname === '')) {
+          res.writeHead(404);
+          res.end('Not found');
+          return;
         }
+
         const code = u.searchParams.get('code');
         const err = u.searchParams.get('error');
+        const errDescription = u.searchParams.get('error_description');
         const returnedState = u.searchParams.get('state');
-        if (returnedState !== expectedState) throw new Error('La respuesta de Google no corresponde al inicio de sesión actual.');
-        if (err) throw new Error(err);
+
+        if (returnedState !== expectedState) {
+          throw new Error('La respuesta de Google no corresponde al inicio de sesión actual.');
+        }
+        if (err) {
+          throw new Error(errDescription ? `${err}: ${errDescription}` : err);
+        }
         if (!code) throw new Error('Google no devolvió el código de autorización.');
 
-        if (!pkce?.codeVerifier) throw new Error('No se pudo validar el inicio de sesión seguro con Google.');
-        const redirectUri = `http://127.0.0.1:${server.address().port}`;
+        const port = server.address().port;
+        const redirectUri = useLegacyDesktopCredentials
+          ? `http://127.0.0.1:${port}/oauth2callback`
+          : `http://127.0.0.1:${port}`;
+
         oauthClient = createOAuthClient(credentials, redirectUri);
-        const { tokens } = await oauthClient.getToken({
-          code,
-          codeVerifier: pkce.codeVerifier,
-          redirect_uri: redirectUri,
-          client_id: credentials.client_id
-        });
-        const storedTokens = { ...tokens, weekcalWriteEnabled: true };
+
+        let tokenResult;
+        if (useLegacyDesktopCredentials) {
+          tokenResult = await oauthClient.getToken(code);
+        } else {
+          if (!pkce?.codeVerifier) throw new Error('No se pudo validar el inicio de sesión seguro con Google.');
+          tokenResult = await oauthClient.getToken({
+            code,
+            codeVerifier: pkce.codeVerifier,
+            redirect_uri: redirectUri,
+            client_id: credentials.client_id
+          });
+        }
+
+        const storedTokens = { ...tokenResult.tokens, weekcalWriteEnabled: true };
         oauthClient.setCredentials(storedTokens);
         saveSecure('google-token.secure.json', storedTokens, { requireEncryption: true });
         saveSettings({ selectedCalendars: [] });
@@ -292,17 +321,27 @@ async function performOAuth(credentials, { selectAccount = true } = {}) {
     server.listen(0, '127.0.0.1', async () => {
       try {
         const port = server.address().port;
-        const redirectUri = `http://127.0.0.1:${port}`;
+        const redirectUri = useLegacyDesktopCredentials
+          ? `http://127.0.0.1:${port}/oauth2callback`
+          : `http://127.0.0.1:${port}`;
+
         oauthClient = createOAuthClient(credentials, redirectUri);
-        pkce = await oauthClient.generateCodeVerifierAsync();
-        const authUrl = oauthClient.generateAuthUrl({
+
+        const options = {
           access_type: 'offline',
           prompt: selectAccount ? 'select_account consent' : 'consent',
+          include_granted_scopes: true,
           scope: GOOGLE_SCOPES,
-          state: expectedState,
-          code_challenge: pkce.codeChallenge,
-          code_challenge_method: CodeChallengeMethod.S256
-        });
+          state: expectedState
+        };
+
+        if (!useLegacyDesktopCredentials) {
+          pkce = await oauthClient.generateCodeVerifierAsync();
+          options.code_challenge = pkce.codeChallenge;
+          options.code_challenge_method = CodeChallengeMethod.S256;
+        }
+
+        const authUrl = oauthClient.generateAuthUrl(options);
         await shell.openExternal(authUrl);
       } catch (e) {
         finish(reject, e);
@@ -343,11 +382,13 @@ function tokenHasWriteScope() {
 }
 
 async function googleStatus() {
-  const packaged = getPackagedGoogleCredentials();
-  const legacy = packaged ? null : getLegacyCredentialsRecord();
-  const creds = packaged || (legacy?.client_id ? { client_id: legacy.client_id } : null);
+  const legacy = getLegacyCredentialsRecord();
+  const packaged = legacy?.client_id ? null : getPackagedGoogleCredentials();
+  const creds = legacy?.client_id
+    ? { client_id: legacy.client_id, client_secret: legacy.client_secret || '' }
+    : (packaged?.client_id ? { client_id: packaged.client_id } : null);
   const token = getTokenRecord();
-  const integrationSource = packaged ? 'packaged' : (legacy?.client_id ? 'legacy' : 'none');
+  const integrationSource = legacy?.client_id ? 'legacy' : (packaged?.client_id ? 'packaged' : 'none');
   if (!creds || !token) return {
     connected: false,
     integrationSource,
