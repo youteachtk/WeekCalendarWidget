@@ -113,3 +113,12 @@ En la conexión de Google Calendar disponible durante el desarrollo se detectaro
 - Each installation stores only that user's own encrypted Google token locally.
 - The user experience is: install → Conectar con Google → choose authorized account → use WeekCal.
 - Disconnected installs remain empty until the user connects Google.
+
+
+## WeekCal 0.5.3 portable private Google sign-in
+- The recovered OAuth Desktop Client ID is now bundled directly in WeekCal.
+- A fresh PC no longer depends on the original google-credentials.secure.json file.
+- Fresh installations use the bundled Client ID + PKCE loopback OAuth flow.
+- The original PC may continue using its legacy client secret path for compatibility.
+- End users never select an OAuth JSON file.
+- Because the Google app remains private/testing, only accounts authorized in that Google OAuth project can complete sign-in.
