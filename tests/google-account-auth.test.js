@@ -87,3 +87,10 @@ test('Windows installer can be built before the recovered client ID is added to 
   assert.match(workflow, /building recovery-capable installer/i);
   assert.doesNotMatch(workflow, /if:\s*\$\{\{\s*vars\.WEEKCAL_GOOGLE_CLIENT_ID/);
 });
+
+
+test('desktop loopback redirect uses Google's documented root URI without an extra callback path', () => {
+  assert.match(main, /http:\/\/127\.0\.0\.1:\$\{port\}/);
+  assert.match(main, /u\.pathname !== '\/'/);
+  assert.doesNotMatch(main, /oauth2callback/);
+});
