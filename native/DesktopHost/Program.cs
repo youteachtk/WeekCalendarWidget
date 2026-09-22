@@ -58,7 +58,7 @@ internal static class Program
 
     private sealed class IconLayoutState
     {
-        public int Version { get; set; } = 3;
+        public int Version { get; set; } = 4;
         public bool AutoArrange { get; set; }
         public List<IconPosition> Positions { get; set; } = new();
     }
@@ -515,7 +515,7 @@ internal static class Program
             try
             {
                 var existing = JsonSerializer.Deserialize<IconLayoutState>(File.ReadAllText(statePath));
-                if (existing is not null && existing.Version >= 3 && existing.Positions.Count > 0)
+                if (existing is not null && existing.Version >= 4 && existing.Positions.Count > 0)
                 {
                     state = existing;
                     existingValid = true;
@@ -573,12 +573,18 @@ internal static class Program
 
         GetClientRect(listView, out var client);
 
-        var anchor = FindGridAnchor(currentPositions, spacing);
+        var first = state.Positions
+            .Where(p => p.Index < currentCount)
+            .OrderBy(p => p.Index)
+            .FirstOrDefault() ?? currentPositions[0];
+        var anchorX = ((first.X % spacing.X) + spacing.X) % spacing.X;
+        var anchorY = ((first.Y % spacing.Y) + spacing.Y) % spacing.Y;
+
         var safetyPaddingX = 8;
         var safetyPaddingY = 8;
         var exclusionArea = ExpandAndClamp(widgetArea, safetyPaddingX, safetyPaddingY, client);
 
-        var candidates = BuildCandidateGrid(client, spacing, anchor.X, anchor.Y, exclusionArea);
+        var candidates = BuildCandidateGrid(client, spacing, anchorX, anchorY, exclusionArea);
         if (candidates.Count < currentPositions.Count)
             throw new InvalidOperationException("No hay suficientes celdas libres para acomodar los iconos fuera de WeekCal.");
 
