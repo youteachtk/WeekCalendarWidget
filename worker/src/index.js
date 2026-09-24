@@ -24,6 +24,101 @@ function json(data, status = 200, extraHeaders = {}) {
   });
 }
 
+function html(body, status = 200) {
+  return new Response(body, {
+    status,
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'public, max-age=300',
+      'x-content-type-options': 'nosniff',
+      'referrer-policy': 'no-referrer'
+    }
+  });
+}
+
+function publicPage({ title, content }) {
+  return `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${title}</title>
+  <style>
+    :root { color-scheme: light dark; font-family: Inter, Segoe UI, system-ui, sans-serif; }
+    body { margin: 0; background: #f5f5f3; color: #1f2328; }
+    main { max-width: 760px; margin: 56px auto; padding: 0 24px 56px; }
+    .card { background: #fff; border: 1px solid #ddd; border-radius: 18px; padding: 32px; box-shadow: 0 8px 30px rgba(0,0,0,.06); }
+    h1 { margin-top: 0; font-size: 2rem; }
+    h2 { margin-top: 2rem; font-size: 1.15rem; }
+    p, li { line-height: 1.65; }
+    a { color: #0b57d0; }
+    .brand { font-weight: 700; letter-spacing: .02em; margin-bottom: 10px; }
+    .muted { color: #59636e; font-size: .95rem; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #16181b; color: #e8eaed; }
+      .card { background: #202124; border-color: #3c4043; box-shadow: none; }
+      a { color: #8ab4f8; }
+      .muted { color: #bdc1c6; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="card">
+      <div class="brand">YouTeach · WeekCal</div>
+      ${content}
+    </div>
+  </main>
+</body>
+</html>`;
+}
+
+function homePage() {
+  return publicPage({
+    title: 'WeekCal — YouTeach',
+    content: `
+      <h1>WeekCal</h1>
+      <p>WeekCal es una aplicación de escritorio para Windows que muestra una vista semanal y sincroniza los eventos del usuario con Google Calendar.</p>
+      <p>La conexión con Google se utiliza únicamente para identificar la cuenta autorizada y para leer, crear, editar y eliminar eventos del calendario cuando el usuario lo solicita.</p>
+      <p><a href="/privacy">Política de privacidad</a></p>
+      <p class="muted">Servicio de YouTeach.</p>
+    `
+  });
+}
+
+function privacyPage() {
+  return publicPage({
+    title: 'Política de privacidad — WeekCal',
+    content: `
+      <h1>Política de privacidad de WeekCal</h1>
+      <p class="muted">Última actualización: 24 de septiembre de 2026.</p>
+
+      <h2>Qué datos utiliza WeekCal</h2>
+      <p>WeekCal solicita acceso a la identidad básica de la cuenta de Google y a Google Calendar. Esto permite identificar la cuenta conectada, mostrar sus calendarios y eventos, y realizar cambios en eventos cuando el usuario usa las funciones de edición de la aplicación.</p>
+
+      <h2>Cómo se usan los datos</h2>
+      <p>Los datos de Google Calendar se usan exclusivamente para proporcionar las funciones de calendario de WeekCal. WeekCal no vende datos personales ni utiliza los datos de Google Calendar para publicidad.</p>
+
+      <h2>Almacenamiento</h2>
+      <p>Los tokens de Google necesarios para mantener la sesión se almacenan cifrados en la computadora del usuario mediante las protecciones del sistema operativo. El servicio de autorización de WeekCal mantiene una lista central de correos autorizados para controlar quién puede usar la aplicación.</p>
+
+      <h2>Servicio de autorización</h2>
+      <p>Durante las comprobaciones de acceso, WeekCal envía a su servicio de autorización la información necesaria para validar con Google la identidad de la cuenta conectada. El servicio no almacena los eventos del calendario.</p>
+
+      <h2>Revocación y eliminación</h2>
+      <p>El usuario puede desconectar Google desde WeekCal. También puede revocar el acceso de la aplicación desde la configuración de seguridad de su cuenta de Google. Los administradores de WeekCal pueden retirar una cuenta de la lista de usuarios autorizados.</p>
+
+      <h2>Uso limitado de datos de Google</h2>
+      <p>El uso que WeekCal hace de la información recibida de las APIs de Google está limitado a proporcionar y mejorar las funciones visibles de calendario solicitadas por el usuario.</p>
+
+      <h2>Contacto</h2>
+      <p>Las consultas de privacidad y soporte se atienden mediante los canales de soporte indicados en la pantalla de consentimiento de Google de WeekCal.</p>
+
+      <p><a href="/">Volver a WeekCal</a></p>
+    `
+  });
+}
+
 async function sha256Hex(value) {
   const bytes = new TextEncoder().encode(value);
   const digest = await crypto.subtle.digest('SHA-256', bytes);
@@ -196,6 +291,14 @@ export default {
     const url = new URL(request.url);
 
     try {
+      if (request.method === 'GET' && url.pathname === '/') {
+        return html(homePage());
+      }
+
+      if (request.method === 'GET' && url.pathname === '/privacy') {
+        return html(privacyPage());
+      }
+
       if (request.method === 'GET' && url.pathname === '/health') {
         return json({ ok: true, service: 'weekcal-auth' });
       }
