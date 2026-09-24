@@ -34,3 +34,13 @@ test('legacy Calendar-only tokens can still identify their account through the p
   assert.match(worker, /calendar\/v3\/users\/me\/calendarList/);
   assert.match(worker, /find\(item => item\.primary\)/);
 });
+
+
+test('Worker publishes a public WeekCal homepage and privacy policy', () => {
+  assert.match(worker, /url\.pathname === '\/'/);
+  assert.match(worker, /url\.pathname === '\/privacy'/);
+  assert.match(worker, /Política de privacidad de WeekCal/);
+  assert.match(worker, /Google Calendar/);
+  assert.match(worker, /no almacena los eventos del calendario/);
+  assert.match(worker, /href="\/privacy"/);
+});
