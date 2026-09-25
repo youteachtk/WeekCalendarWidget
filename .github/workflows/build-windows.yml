@@ -98,6 +98,10 @@ jobs:
           binding = "WEEKCAL_AUTH"
           id = "$($namespace.id)"
 
+          [[routes]]
+          pattern = "weekcal.youteach.tk"
+          custom_domain = true
+
           [vars]
           GOOGLE_CLIENT_ID = "$($env:GOOGLE_CLIENT_ID)"
           "@
