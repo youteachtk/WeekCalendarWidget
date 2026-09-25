@@ -101,6 +101,7 @@ jobs:
           [[routes]]
           pattern = "weekcal.youteach.tk"
           custom_domain = true
+          zone_name = "youteach.tk"
 
           [vars]
           GOOGLE_CLIENT_ID = "$($env:GOOGLE_CLIENT_ID)"
