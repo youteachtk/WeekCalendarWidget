@@ -80,7 +80,7 @@ function homePage() {
       <h1>WeekCal</h1>
       <p>WeekCal es una aplicación de escritorio para Windows que muestra una vista semanal y sincroniza los eventos del usuario con Google Calendar.</p>
       <p>La conexión con Google se utiliza únicamente para identificar la cuenta autorizada y para leer, crear, editar y eliminar eventos del calendario cuando el usuario lo solicita.</p>
-      <p><a href="/privacy">Política de privacidad</a></p>
+      <p><a href="/privacy">Política de privacidad</a> · <a href="/terms">Condiciones del servicio</a></p>
       <p class="muted">Servicio de YouTeach.</p>
     `
   });
@@ -113,6 +113,33 @@ function privacyPage() {
 
       <h2>Contacto</h2>
       <p>Las consultas de privacidad y soporte se atienden mediante los canales de soporte indicados en la pantalla de consentimiento de Google de WeekCal.</p>
+
+      <p><a href="/">Volver a WeekCal</a></p>
+    `
+  });
+}
+
+function termsPage() {
+  return publicPage({
+    title: 'Condiciones del servicio — WeekCal',
+    content: `
+      <h1>Condiciones del servicio de WeekCal</h1>
+      <p class="muted">Última actualización: 24 de septiembre de 2026.</p>
+
+      <h2>Uso del servicio</h2>
+      <p>WeekCal es una aplicación de escritorio para Windows que permite visualizar y administrar eventos de Google Calendar. El usuario debe utilizar la aplicación de forma lícita y conforme a las condiciones de Google aplicables a su cuenta.</p>
+
+      <h2>Acceso a Google Calendar</h2>
+      <p>WeekCal únicamente accede a la información de Google que el usuario autoriza mediante OAuth. El acceso puede revocarse en cualquier momento desde WeekCal o desde la configuración de la cuenta de Google.</p>
+
+      <h2>Disponibilidad</h2>
+      <p>WeekCal se ofrece tal como está y puede recibir actualizaciones, correcciones o cambios de funcionalidad. La disponibilidad de funciones que dependen de Google Calendar también está sujeta a los servicios de Google.</p>
+
+      <h2>Privacidad</h2>
+      <p>El tratamiento de datos de WeekCal se describe en la <a href="/privacy">Política de privacidad</a>.</p>
+
+      <h2>Contacto</h2>
+      <p>Las consultas de soporte se atienden mediante el correo de asistencia indicado en la pantalla de consentimiento de Google.</p>
 
       <p><a href="/">Volver a WeekCal</a></p>
     `
@@ -297,6 +324,10 @@ export default {
 
       if (request.method === 'GET' && url.pathname === '/privacy') {
         return html(privacyPage());
+      }
+
+      if (request.method === 'GET' && url.pathname === '/terms') {
+        return html(termsPage());
       }
 
       if (request.method === 'GET' && url.pathname === '/health') {
