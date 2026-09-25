@@ -23,6 +23,11 @@
 
     <section class="calendar-wrap">
       <div id="weekGrid" class="week-grid"></div>
+      <div id="disconnectedEmptyState" class="disconnected-empty-state hidden">
+        <strong>Conecta Google Calendar</strong>
+        <span>Inicia sesión con tu cuenta para ver tus propios eventos.</span>
+        <button id="emptyStateConnectGoogle" class="primary-btn">Conectar con Google</button>
+      </div>
     </section>
 
     <footer class="week-footer no-drag">
@@ -66,14 +71,38 @@
       <div class="setting-section">
         <h3>Google Calendar</h3>
         <div id="googleDisconnected" class="connect-card">
-          <div><strong>Conectar cuenta</strong><small>Lectura y edición de tus calendarios de Google</small></div>
-          <button id="connectGoogle" class="primary-btn">Conectar</button>
+          <div><strong>Conectar con Google</strong><small>Cada persona inicia sesión con su propia cuenta; no se necesitan archivos de configuración.</small></div>
+          <button id="connectGoogle" class="primary-btn">Conectar con Google</button>
         </div>
         <div id="googleConnected" class="connected-card hidden">
-          <div class="connected-row"><span class="status-good">●</span><strong>Google conectado</strong></div>
-          <button id="disconnectGoogle" class="text-btn">Desconectar</button>
+          <div>
+            <div class="connected-row"><span class="status-good">●</span><strong>Google conectado</strong></div>
+            <small id="googleAccountEmail">Cuenta conectada</small>
+          </div>
+          <div class="connected-actions">
+            <button id="switchGoogleAccount" class="text-btn">Cambiar cuenta</button>
+            <button id="disconnectGoogle" class="text-btn">Desconectar</button>
+          </div>
+        </div>
+        <div id="legacyGoogleRecovery" class="connect-card hidden">
+          <div><strong>Integración anterior encontrada</strong><small>Esta PC conserva el Client ID de Google usado por WeekCal. Puedes copiarlo para incorporarlo una sola vez en los próximos instaladores.</small></div>
+          <button id="copyGoogleClientId" class="secondary-btn">Copiar Client ID</button>
         </div>
         <div id="calendarChooser" class="calendar-chooser"></div>
+
+        <div id="weekcalAdmin" class="weekcal-admin hidden">
+          <div class="weekcal-admin-title">
+            <div>
+              <strong>Usuarios autorizados</strong>
+              <small>Agrega cuentas que podrán iniciar sesión en WeekCal.</small>
+            </div>
+          </div>
+          <div class="weekcal-admin-add">
+            <input id="authorizedUserEmail" type="email" placeholder="correo@gmail.com" autocomplete="off" />
+            <button id="addAuthorizedUser" class="primary-btn">Agregar</button>
+          </div>
+          <div id="authorizedUsersList" class="authorized-users-list"></div>
+        </div>
       </div>
 
       <div class="setting-section window-section">

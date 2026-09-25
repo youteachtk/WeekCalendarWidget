@@ -4,6 +4,9 @@ const state = {
   settings: null,
   extra: { desktopMode: true, reserveIconSpace: true, lockWidget: false, theme: 'dark' },
   connected: false,
+  accountEmail: '',
+  isAdmin: false,
+  authorizedUsers: [],
   calendars: [],
   events: [],
   weekOffset: 0,
@@ -100,36 +103,6 @@ function effectiveTheme() {
 function applyTheme() {
   document.documentElement.dataset.theme = effectiveTheme();
   document.body.classList.toggle('desktop-mode', Boolean(state.extra.desktopMode));
-}
-
-function demoEvents(start) {
-  const make = (day,h1,m1,h2,m2,title,color,location="") => ({
-    id: Math.random().toString(36).slice(2),
-    calendarId: 'Demo',
-    calendarName: 'Demo',
-    title,
-    color,
-    foreground: '#fff',
-    start: new Date(start.getFullYear(),start.getMonth(),start.getDate()+day,h1,m1).toISOString(),
-    end: new Date(start.getFullYear(),start.getMonth(),start.getDate()+day,h2,m2).toISOString(),
-    allDay:false,
-    location
-  });
-  return [
-    make(0,13,0,14,0,"Robótica","#2874f0","Q3"),
-    make(1,8,0,9,0,"Control","#087a1d","Q5"),
-    make(1,12,0,13,0,"IA","#ef5b0c","AE2"),
-    make(1,13,0,14,0,"Robótica","#2874f0","Q3"),
-    make(1,14,0,15,0,"MovApps","#8424e8","AE2"),
-    make(2,12,0,14,0,"Labo IA","#ff8f10","AE2"),
-    make(2,15,0,17,0,"Labo Robótica","#2099ef","LM1"),
-    make(3,9,0,11,0,"Labo Ctrl","#29995d","Y6"),
-    make(3,12,0,13,0,"Examen","#e2232c"),
-    make(3,14,0,15,0,"Lab MovApps","#9b30df","AE2"),
-    make(4,8,0,9,0,"Control","#087a1d","Q5"),
-    make(4,12,0,13,0,"IA","#ef5b0c","AE2"),
-    make(4,13,0,14,0,"Robótica","#2874f0","Q3")
-  ];
 }
 
 function layoutEvents(events) {
@@ -332,6 +305,66 @@ function renderCalendarChooser() {
   }
 }
 
+function renderAuthorizedUsers() {
+  const host=$("authorizedUsersList");
+  if (!host) return;
+  host.innerHTML="";
+
+  for (const user of state.authorizedUsers||[]) {
+    const row=document.createElement("div");
+    row.className="authorized-user-row";
+
+    const email=document.createElement("span");
+    email.className="authorized-user-email";
+    email.textContent=user.email;
+
+    const badge=document.createElement("span");
+    badge.className="authorized-user-badge";
+    badge.textContent=user.admin?"ADMIN":"";
+
+    const remove=document.createElement("button");
+    remove.type="button";
+    remove.className="authorized-user-remove";
+    remove.textContent="Quitar";
+    remove.disabled=user.email===state.accountEmail;
+    if (remove.disabled) remove.style.opacity=".35";
+    remove.onclick=async()=>{
+      if (remove.disabled) return;
+      try {
+        const result=await api.authRemoveUser(user.email);
+        state.authorizedUsers=result.users||[];
+        renderAuthorizedUsers();
+        toast("Acceso retirado a "+user.email);
+      } catch(e) {
+        toast("No se pudo quitar: "+e.message);
+      }
+    };
+
+    row.append(email,badge,remove);
+    host.appendChild(row);
+  }
+}
+
+async function loadAuthorizedUsers() {
+  if (!state.connected || !state.isAdmin) {
+    state.authorizedUsers=[];
+    $("weekcalAdmin")?.classList.add("hidden");
+    renderAuthorizedUsers();
+    return;
+  }
+
+  $("weekcalAdmin")?.classList.remove("hidden");
+  try {
+    const result=await api.authListUsers();
+    state.authorizedUsers=result.users||[];
+    renderAuthorizedUsers();
+  } catch(e) {
+    state.authorizedUsers=[];
+    renderAuthorizedUsers();
+    toast("No se pudo cargar la lista de usuarios: "+e.message);
+  }
+}
+
 function syncControls() {
   $("visibleDays").value=String(state.settings.visibleDays||7);
   $("dayStart").value=String(state.settings.dayStartHour ?? 8);
@@ -350,21 +383,33 @@ async function updateGoogleState() {
   const status=await api.googleStatus();
   state.connected=Boolean(status.connected);
   state.writeEnabled=Boolean(status.writeEnabled);
+  state.accountEmail=String(status.accountEmail||'');
+  state.isAdmin=Boolean(status.isAdmin);
   $("googleDisconnected").classList.toggle("hidden",state.connected);
   $("googleConnected").classList.toggle("hidden",!state.connected);
+  $("legacyGoogleRecovery").classList.toggle("hidden",!status.clientIdRecoverable);
+  $("disconnectedEmptyState").classList.toggle("hidden",state.connected);
   $("syncStatus").className=state.connected?"sync-status ok":"sync-status";
-  $("syncText").textContent=state.connected?"Google":"Demo";
+  $("syncText").textContent=state.connected?"Google":"Sin conectar";
+  $("googleAccountEmail").textContent=state.accountEmail||"Cuenta conectada";
   if (state.connected) {
     try {
       state.calendars=await api.listCalendars();
       state.eventColors=await api.listEventColors();
       renderCalendarChooser();
+      await loadAuthorizedUsers();
     } catch (e) {
       toast("No se pudieron leer los calendarios: "+e.message);
     }
   } else {
     state.calendars=[];
+    state.accountEmail='';
+    state.isAdmin=false;
+    state.authorizedUsers=[];
+    $("googleAccountEmail").textContent="Cuenta conectada";
     $("calendarChooser").innerHTML="";
+    $("weekcalAdmin")?.classList.add("hidden");
+    renderAuthorizedUsers();
   }
 }
 
@@ -381,13 +426,13 @@ async function refresh(notify=false) {
       $("syncText").textContent="Google";
       if (notify) toast("Calendario actualizado");
     } else {
-      state.events=demoEvents(week);
+      state.events=[];
     }
   } catch (e) {
     $("syncStatus").className="sync-status err";
     $("syncText").textContent="Error";
     toast(e.message||"Error al actualizar");
-    if (!state.events.length) state.events=demoEvents(week);
+    state.events=[];
   } finally {
     state.busy=false;
     render();
@@ -656,7 +701,12 @@ function bindUI() {
       toast("No se pudieron acomodar los iconos: "+response.result.error);
     } else {
       const moved=response.result?.moved;
-      toast(e.target.checked ? (Number.isFinite(moved) ? `Iconos acomodados: ${moved}` : "Espacio reservado para WeekCal") : "Posiciones de iconos restauradas");
+      const detected=response.result?.detectedOverlaps;
+      toast(e.target.checked
+        ? (Number.isFinite(moved) && Number.isFinite(detected)
+            ? `Iconos debajo detectados: ${detected} · movidos: ${moved}`
+            : (Number.isFinite(moved) ? `Iconos acomodados: ${moved}` : "Espacio reservado para WeekCal"))
+        : "Posiciones de iconos restauradas");
     }
   };
   $("lockWidgetToggle").onchange=async(e)=>{
@@ -670,16 +720,64 @@ function bindUI() {
   $("dayStart").onchange=updateDisplay;
   $("dayEnd").onchange=updateDisplay;
 
-  $("connectGoogle").onclick=async()=>{
+  const connectGoogleAccount=async()=>{
     try {
-      toast("Selecciona tus credenciales OAuth de Google…");
+      toast("Abriendo inicio de sesión de Google…");
       const result=await api.googleConnect();
-      if (!result?.canceled) {
+      if (result?.connected) {
         await updateGoogleState();
         await refresh(true);
       }
     } catch(e) { toast("No se pudo conectar: "+e.message); }
   };
+  $("connectGoogle").onclick=connectGoogleAccount;
+  $("emptyStateConnectGoogle").onclick=connectGoogleAccount;
+
+  $("copyGoogleClientId").onclick=async()=>{
+    try {
+      await api.googleCopyClientId();
+      toast("Client ID de WeekCal copiado");
+    } catch(e) {
+      toast("No se pudo recuperar la integración: "+e.message);
+    }
+  };
+
+  $("switchGoogleAccount").onclick=async()=>{
+    try {
+      toast("Selecciona otra cuenta de Google…");
+      const result=await api.googleSwitchAccount();
+      if (result?.connected) {
+        state.events=[];
+        await updateGoogleState();
+        await refresh(true);
+      }
+    } catch(e) { toast("No se pudo cambiar de cuenta: "+e.message); }
+  };
+
+  $("addAuthorizedUser").onclick=async()=>{
+    const input=$("authorizedUserEmail");
+    const email=String(input.value||"").trim().toLowerCase();
+    if (!email) {
+      toast("Escribe un correo");
+      return;
+    }
+    try {
+      const result=await api.authAddUser(email);
+      state.authorizedUsers=result.users||[];
+      input.value="";
+      renderAuthorizedUsers();
+      toast("Usuario autorizado: "+email);
+    } catch(e) {
+      toast("No se pudo agregar: "+e.message);
+    }
+  };
+
+  $("authorizedUserEmail").addEventListener("keydown",(e)=>{
+    if (e.key==="Enter") {
+      e.preventDefault();
+      $("addAuthorizedUser").click();
+    }
+  });
 
   $("disconnectGoogle").onclick=async()=>{
     await api.googleDisconnect();

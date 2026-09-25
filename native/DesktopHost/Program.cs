@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Threading;
 
 internal static class Program
 {
@@ -40,6 +41,8 @@ internal static class Program
     private const uint MEM_RELEASE = 0x8000;
     private const uint PAGE_READWRITE = 0x04;
 
+    private static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = new IntPtr(-4);
+
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -57,6 +60,7 @@ internal static class Program
 
     private sealed class IconLayoutState
     {
+        public int Version { get; set; } = 5;
         public bool AutoArrange { get; set; }
         public List<IconPosition> Positions { get; set; } = new();
     }
@@ -105,6 +109,13 @@ internal static class Program
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetProcessDpiAwarenessContext(IntPtr dpiContext);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     private static extern int MapWindowPoints(IntPtr hWndFrom, IntPtr hWndTo, [In, Out] POINT[] lpPoints, uint cPoints);
@@ -333,6 +344,87 @@ internal static class Program
            y < widgetArea.Bottom &&
            y + height > widgetArea.Top;
 
+    private static RECT ExpandAndClamp(RECT area, int padX, int padY, RECT bounds)
+        => new RECT
+        {
+            Left = Math.Max(bounds.Left, area.Left - padX),
+            Top = Math.Max(bounds.Top, area.Top - padY),
+            Right = Math.Min(bounds.Right, area.Right + padX),
+            Bottom = Math.Min(bounds.Bottom, area.Bottom + padY)
+        };
+
+    private static RECT GetWidgetAreaInListView(IntPtr widget, IntPtr listView)
+    {
+        if (!GetClientRect(widget, out var local))
+            throw new InvalidOperationException("No se pudo obtener el tamaño real de WeekCal.");
+
+        var points = new[]
+        {
+            new POINT { X = local.Left, Y = local.Top },
+            new POINT { X = local.Right, Y = local.Bottom }
+        };
+        MapWindowPoints(widget, listView, points, 2);
+
+        var area = new RECT
+        {
+            Left = Math.Min(points[0].X, points[1].X),
+            Top = Math.Min(points[0].Y, points[1].Y),
+            Right = Math.Max(points[0].X, points[1].X),
+            Bottom = Math.Max(points[0].Y, points[1].Y)
+        };
+
+        if (area.Right <= area.Left || area.Bottom <= area.Top)
+            throw new InvalidOperationException("El área calculada de WeekCal no es válida.");
+
+        return area;
+    }
+
+    private static int DominantModulo(IEnumerable<int> values, int spacing)
+    {
+        if (spacing <= 0) return 0;
+        return values
+            .Select(value => ((value % spacing) + spacing) % spacing)
+            .GroupBy(value => value)
+            .OrderByDescending(group => group.Count())
+            .ThenBy(group => group.Key)
+            .Select(group => group.Key)
+            .FirstOrDefault();
+    }
+
+    private static (int X, int Y) FindGridAnchor(
+        IEnumerable<IconPosition> positions,
+        (int X, int Y) spacing)
+    {
+        var list = positions.ToList();
+        if (list.Count == 0) return (0, 0);
+        return (
+            DominantModulo(list.Select(p => p.X), spacing.X),
+            DominantModulo(list.Select(p => p.Y), spacing.Y)
+        );
+    }
+
+    private static List<(int X, int Y)> BuildCandidateGrid(
+        RECT client,
+        (int X, int Y) spacing,
+        int anchorX,
+        int anchorY,
+        RECT exclusionArea)
+    {
+        var candidates = new List<(int X, int Y)>();
+        for (var x = anchorX; x < client.Right; x += spacing.X)
+        {
+            for (var y = anchorY; y < client.Bottom; y += spacing.Y)
+            {
+                if (x < client.Left || y < client.Top) continue;
+                if (CellIntersectsWidget(x, y, spacing.X, spacing.Y, exclusionArea)) continue;
+                candidates.Add((x, y));
+            }
+        }
+        return candidates;
+    }
+
+    private static string PositionKey(int x, int y) => $"{x}:{y}";
+
     private static int ArrangeIconsAroundWidget(
         IntPtr listView,
         IEnumerable<IconPosition> positions,
@@ -359,75 +451,158 @@ internal static class Program
         return moved;
     }
 
+    private static (int Moved, int Remaining) CorrectRemainingOverlaps(
+        IntPtr listView,
+        IReadOnlyList<(int X, int Y)> candidates,
+        int currentCount,
+        (int X, int Y) spacing,
+        RECT exclusionArea)
+    {
+        var moved = 0;
+
+        for (var pass = 0; pass < 4; pass++)
+        {
+            Thread.Sleep(40);
+            var current = ReadPositions(listView)
+                .Where(p => p.Index < currentCount)
+                .ToList();
+
+            var overlaps = current
+                .Where(p => CellIntersectsWidget(p.X, p.Y, spacing.X, spacing.Y, exclusionArea))
+                .ToList();
+
+            if (overlaps.Count == 0) return (moved, 0);
+
+            var used = new HashSet<string>(
+                current
+                    .Where(p => !CellIntersectsWidget(p.X, p.Y, spacing.X, spacing.Y, exclusionArea))
+                    .Select(p => PositionKey(p.X, p.Y)));
+
+            foreach (var p in overlaps)
+            {
+                (int X, int Y)? target = null;
+                foreach (var candidate in candidates
+                    .OrderBy(c => Math.Abs(c.X - p.X) + Math.Abs(c.Y - p.Y)))
+                {
+                    if (used.Contains(PositionKey(candidate.X, candidate.Y))) continue;
+                    target = candidate;
+                    break;
+                }
+
+                if (target is null) break;
+                SetPosition(listView, p.Index, target.Value.X, target.Value.Y);
+                used.Add(PositionKey(target.Value.X, target.Value.Y));
+                moved++;
+            }
+        }
+
+        Thread.Sleep(40);
+        var remaining = ReadPositions(listView)
+            .Where(p => p.Index < currentCount)
+            .Count(p => CellIntersectsWidget(p.X, p.Y, spacing.X, spacing.Y, exclusionArea));
+        return (moved, remaining);
+    }
+
     private static string ReserveIcons(IntPtr widget, string statePath)
     {
         var listView = FindDesktopListView();
-        if (listView == IntPtr.Zero) throw new InvalidOperationException("No se encontró la vista de iconos del escritorio.");
+        if (listView == IntPtr.Zero)
+            throw new InvalidOperationException("No se encontró la vista de iconos del escritorio.");
+
+        var currentCount = SendMessage(listView, LVM_GETITEMCOUNT, IntPtr.Zero, IntPtr.Zero).ToInt32();
+        var currentPositions = ReadPositions(listView)
+            .Where(p => p.Index < currentCount)
+            .ToList();
+
+        if (currentPositions.Count == 0)
+            return JsonSerializer.Serialize(new { moved = 0, message = "No hay iconos que acomodar." });
 
         IconLayoutState state;
+        var existingValid = false;
         if (File.Exists(statePath))
         {
-            state = JsonSerializer.Deserialize<IconLayoutState>(File.ReadAllText(statePath)) ?? new IconLayoutState();
+            try
+            {
+                var existing = JsonSerializer.Deserialize<IconLayoutState>(File.ReadAllText(statePath));
+                if (existing is not null && existing.Version >= 5 && existing.Positions.Count > 0)
+                {
+                    state = existing;
+                    existingValid = true;
+                }
+                else
+                {
+                    state = new IconLayoutState();
+                }
+            }
+            catch
+            {
+                state = new IconLayoutState();
+            }
         }
         else
         {
+            state = new IconLayoutState();
+        }
+
+        if (!existingValid)
+        {
             state = new IconLayoutState
             {
+                Version = 3,
                 AutoArrange = IsAutoArrange(listView),
-                Positions = ReadPositions(listView)
+                Positions = currentPositions
+                    .Select(p => new IconPosition { Index = p.Index, X = p.X, Y = p.Y })
+                    .ToList()
             };
             var dir = Path.GetDirectoryName(statePath);
             if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
             File.WriteAllText(statePath, JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }));
         }
 
-        if (state.Positions.Count == 0)
-            return JsonSerializer.Serialize(new { moved = 0, message = "No hay iconos que acomodar." });
-
         if (IsAutoArrange(listView)) SetAutoArrange(listView, false);
 
-        var currentCount = SendMessage(listView, LVM_GETITEMCOUNT, IntPtr.Zero, IntPtr.Zero).ToInt32();
-        foreach (var p in state.Positions.Where(p => p.Index < currentCount))
-            SetPosition(listView, p.Index, p.X, p.Y);
-
-        if (!GetWindowRect(widget, out var widgetRect))
-            throw new InvalidOperationException("No se pudo obtener el área del widget.");
-
-        var points = new[]
-        {
-            new POINT { X = widgetRect.Left, Y = widgetRect.Top },
-            new POINT { X = widgetRect.Right, Y = widgetRect.Bottom }
-        };
-        MapWindowPoints(IntPtr.Zero, listView, points, 2);
-
         var spacing = GetSpacing(listView);
-        var widgetArea = new RECT
-        {
-            Left = Math.Min(points[0].X, points[1].X),
-            Top = Math.Min(points[0].Y, points[1].Y),
-            Right = Math.Max(points[0].X, points[1].X),
-            Bottom = Math.Max(points[0].Y, points[1].Y)
-        };
+        var widgetArea = GetWidgetAreaInListView(widget, listView);
 
         GetClientRect(listView, out var client);
-        var first = state.Positions[0];
+
+        var first = state.Positions
+            .Where(p => p.Index < currentCount)
+            .OrderBy(p => p.Index)
+            .FirstOrDefault() ?? currentPositions[0];
         var anchorX = ((first.X % spacing.X) + spacing.X) % spacing.X;
         var anchorY = ((first.Y % spacing.Y) + spacing.Y) % spacing.Y;
 
-        var candidates = new List<(int X, int Y)>();
-        for (var x = anchorX; x < client.Right; x += spacing.X)
+        var safetyPaddingX = 8;
+        var safetyPaddingY = 8;
+        var exclusionArea = ExpandAndClamp(widgetArea, safetyPaddingX, safetyPaddingY, client);
+
+        var candidates = BuildCandidateGrid(client, spacing, anchorX, anchorY, exclusionArea);
+        if (candidates.Count < currentPositions.Count)
+            throw new InvalidOperationException("No hay suficientes celdas libres para acomodar los iconos fuera de WeekCal.");
+
+        var moved = ArrangeIconsAroundWidget(listView, currentPositions, candidates, currentCount);
+        var correction = CorrectRemainingOverlaps(listView, candidates, currentCount, spacing, exclusionArea);
+        moved += correction.Moved;
+
+        if (correction.Remaining > 0)
+            throw new InvalidOperationException(
+                $"Explorer dejó {correction.Remaining} iconos dentro del área reservada después de verificar el reacomodo.");
+
+        return JsonSerializer.Serialize(new
         {
-            for (var y = anchorY; y < client.Bottom; y += spacing.Y)
-            {
-                if (x < client.Left || y < client.Top) continue;
-                if (CellIntersectsWidget(x, y, spacing.X, spacing.Y, widgetArea)) continue;
-                candidates.Add((x, y));
-            }
-        }
-
-        var moved = ArrangeIconsAroundWidget(listView, state.Positions, candidates, currentCount);
-
-        return JsonSerializer.Serialize(new { moved, autoArrangeWasEnabled = state.AutoArrange });
+            moved,
+            verified = true,
+            remainingOverlaps = 0,
+            widgetArea,
+            exclusionArea,
+            spacingX = spacing.X,
+            spacingY = spacing.Y,
+            currentCount,
+            safetyPaddingX,
+            safetyPaddingY,
+            autoArrangeWasEnabled = state.AutoArrange
+        });
     }
 
     private static string RestoreIcons(string statePath)
@@ -453,6 +628,11 @@ internal static class Program
 
     private static int Main(string[] args)
     {
+        // Explorer icon positions are device pixels. Make this helper Per-Monitor-V2
+        // aware before reading/mapping any HWND coordinates so WeekCal's exclusion
+        // rectangle uses the same coordinate system at 125/150/175/200% scaling.
+        SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
         if (args.Length < 6 || !long.TryParse(args[1], out var hwndValue)) return 64;
         if (!int.TryParse(args[2], out var x) || !int.TryParse(args[3], out var y) ||
             !int.TryParse(args[4], out var width) || !int.TryParse(args[5], out var height)) return 65;
@@ -466,23 +646,50 @@ internal static class Program
             {
                 var desktopSurface = FindDesktopListView();
                 if (desktopSurface == IntPtr.Zero) return 2;
+
+                if (!GetWindowRect(hwnd, out var beforeAttach))
+                    throw new InvalidOperationException("No se pudo obtener el tamaño físico de WeekCal.");
+
+                var actualWidth = Math.Max(1, beforeAttach.Right - beforeAttach.Left);
+                var actualHeight = Math.Max(1, beforeAttach.Bottom - beforeAttach.Top);
+                var parentPoint = new[] { new POINT { X = beforeAttach.Left, Y = beforeAttach.Top } };
+
                 SetChildStyle(hwnd, true);
                 SetParent(hwnd, desktopSurface);
-                var parentPoint = new[] { new POINT { X = x, Y = y } };
                 MapWindowPoints(IntPtr.Zero, desktopSurface, parentPoint, 1);
-                SetWindowPos(hwnd, IntPtr.Zero, parentPoint[0].X, parentPoint[0].Y, width, height,
+                SetWindowPos(hwnd, IntPtr.Zero, parentPoint[0].X, parentPoint[0].Y, actualWidth, actualHeight,
                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-                Console.WriteLine("attached");
+
+                Console.WriteLine(JsonSerializer.Serialize(new
+                {
+                    attached = true,
+                    width = actualWidth,
+                    height = actualHeight,
+                    dpi = GetDpiForWindow(hwnd)
+                }));
                 return 0;
             }
 
             if (command == "detach")
             {
+                if (!GetWindowRect(hwnd, out var beforeDetach))
+                    throw new InvalidOperationException("No se pudo obtener la posición física de WeekCal.");
+
+                var actualWidth = Math.Max(1, beforeDetach.Right - beforeDetach.Left);
+                var actualHeight = Math.Max(1, beforeDetach.Bottom - beforeDetach.Top);
+
                 SetParent(hwnd, IntPtr.Zero);
                 SetChildStyle(hwnd, false);
-                SetWindowPos(hwnd, IntPtr.Zero, x, y, width, height,
+                SetWindowPos(hwnd, IntPtr.Zero, beforeDetach.Left, beforeDetach.Top, actualWidth, actualHeight,
                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-                Console.WriteLine("detached");
+
+                Console.WriteLine(JsonSerializer.Serialize(new
+                {
+                    detached = true,
+                    width = actualWidth,
+                    height = actualHeight,
+                    dpi = GetDpiForWindow(hwnd)
+                }));
                 return 0;
             }
 

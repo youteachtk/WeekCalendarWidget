@@ -91,3 +91,55 @@ En la conexión de Google Calendar disponible durante el desarrollo se detectaro
 - Existing Electron protections (setMinimizable(false), minimize/hide restoration) remain as a second layer.
 - Icon reservation previously tested only an icon's anchor point against the widget area. LVM_GETITEMPOSITION gives the item position, while the icon/label occupies a full grid cell. This allowed an anchor to sit just outside WeekCal while part of the icon cell still overlapped the widget.
 - Candidate positions now reject the entire icon grid cell (spacing.X x spacing.Y) when any part of that cell intersects WeekCal's full mapped width/height.
+
+
+## 0.5.0 account sign-in and verified icon reservation
+- A disconnected installation no longer renders the old hardcoded demo timetable. The weekly grid remains empty until a Google account is connected.
+- The Google Calendar section uses a normal **Conectar con Google** flow. End users do not select OAuth JSON files.
+- The Windows build injects WeekCal's application OAuth client from GitHub Actions secrets; user tokens stay local to each PC.
+- The connected Google account email is shown in Settings, with **Cambiar cuenta** and **Desconectar** actions.
+- Changing or disconnecting the Google account clears the locally selected calendar IDs so data from different accounts is not mixed.
+- OAuth now uses a random state value and requests only identity plus Calendar scopes needed by WeekCal.
+- Persisted Google tokens require Electron safeStorage.
+- Icon reservation now adds a safety margin, re-reads the positions Explorer actually applied, retries remaining overlaps, and only reports success when zero icon cells remain inside the reserved area.
+
+
+## Private Google Calendar deployment direction (2026-09-21)
+- WeekCal remains a private/small-group application.
+- End users never provide OAuth JSON files or configure Google Cloud.
+- The existing WeekCal OAuth Desktop client is reused; it is not recreated per installation.
+- The build receives only the existing Client ID as a GitHub Actions variable and packages it automatically.
+- The old Client Secret/JSON is not required. On the original PC, WeekCal can recover the legacy Client ID from the encrypted `google-credentials.secure.json` left by the previous version.
+- Each installation stores only that user's own encrypted Google token locally.
+- The user experience is: install → Conectar con Google → choose authorized account → use WeekCal.
+- Disconnected installs remain empty until the user connects Google.
+
+
+## WeekCal 0.5.3 portable private Google sign-in
+- The recovered OAuth Desktop Client ID is now bundled directly in WeekCal.
+- A fresh PC no longer depends on the original google-credentials.secure.json file.
+- Fresh installations use the bundled Client ID + PKCE loopback OAuth flow.
+- The original PC may continue using its legacy client secret path for compatibility.
+- End users never select an OAuth JSON file.
+- Because the Google app remains private/testing, only accounts authorized in that Google OAuth project can complete sign-in.
+
+
+## WeekCal 0.5.4 central authorization
+- Deployment option B selected: Google OAuth moves to In Production, while WeekCal maintains its own central allowlist.
+- WeekCal uses a dedicated Cloudflare Worker + KV only for authorization; Classroom Games remains on Firebase and is not modified.
+- Sign-in is two-stage: identify account first, check allowlist, then request Google Calendar permissions only for an authorized account.
+- The account is checked again after Calendar consent and connected sessions are periodically revalidated.
+- Administrators can add or remove authorized emails from WeekCal Settings without rebuilding or reinstalling the application.
+- Initial administrators are bootstrapped by hashes so their email addresses are not published in the public repository.
+- The Windows installer packages the deployed Worker URL automatically.
+- Required repository secrets for deployment are `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`.
+- Current blocker: those two Cloudflare secrets are not yet configured in the WeekCalendarWidget repository.
+
+
+## WeekCal 0.5.4 deployment result
+- Dedicated Cloudflare authorization Worker is live at `https://weekcal-auth.youteach-tk.workers.dev`.
+- CI health check passed.
+- KV authorization storage is active.
+- Windows 0.5.4 installer packages the authorization service URL.
+- Verified installer SHA-256: `f9518d8460fd83102dbaac40691b4522964d630381a83d5215c189820ae96b3d`.
+- PR remains unmerged until second-PC sign-in and allowlist administration are validated.

@@ -1,3 +1,7 @@
+# ACTIVE — private deployment with zero JSON steps per installation
+
+> Reconfirmed on 2026-09-21. WeekCal remains a private/small-group application, but OAuth application credentials are configured once in the build pipeline. Installed users never select, upload, or store an OAuth JSON file manually.
+
 # Diseño: cuentas Google por usuario y firma privada para WeekCal
 
 Fecha: 2026-09-18
@@ -18,7 +22,7 @@ Incluido:
 - Mostrar el correo de la cuenta conectada.
 - Acciones de Cambiar cuenta y Desconectar.
 - Tokens OAuth almacenados localmente con Electron safeStorage.
-- Credenciales OAuth de la aplicación suministradas al build desde GitHub Actions Secrets, sin guardar el JSON en el repositorio.
+- La integración reutiliza el OAuth Desktop client existente de WeekCal. Solo el Client ID se suministra una vez al build como GitHub Actions variable; no se requiere Client Secret ni se distribuye el JSON original a los usuarios.
 - Firma Authenticode del instalador y ejecutables con un certificado privado de código.
 - Instalación manual del certificado público como confiable únicamente en las computadoras conocidas.
 - Pruebas de regresión para aislamiento de cuenta, cambio de cuenta, cierre de sesión y configuración de firma.
@@ -42,14 +46,15 @@ WeekCal tendrá un único OAuth Client de tipo Desktop app en Google Cloud.
 
 Las credenciales de ese cliente pertenecen a la aplicación, no al usuario. El flujo actual que obliga al usuario a seleccionar un archivo JSON se eliminará de la interfaz normal.
 
-El build recibirá:
+El build recibirá únicamente:
 
 - WEEKCAL_GOOGLE_CLIENT_ID
-- WEEKCAL_GOOGLE_CLIENT_SECRET
 
-mediante GitHub Actions Secrets. Durante el empaquetado se generará un archivo de configuración de aplicación incluido en el paquete final, o se inyectarán los valores en un módulo generado que no exista en el repositorio.
+como GitHub Actions variable. Durante el empaquetado se generará una configuración con ese Client ID.
 
-El client secret de una aplicación de escritorio no se tratará como una barrera de seguridad del usuario. La seguridad de cada cuenta depende del flujo OAuth y de la protección local de sus tokens.
+WeekCal usa Authorization Code + PKCE S256 y autenticación de cliente pública para el flujo de escritorio. No se necesita recuperar ni almacenar el antiguo Client Secret.
+
+La PC original conserva una ruta de migración: si todavía existe `google-credentials.secure.json`, WeekCal puede recuperar de ese archivo cifrado el Client ID del OAuth Desktop client anterior sin volver a pedir el JSON.
 
 ### Identidad del usuario
 
@@ -260,7 +265,7 @@ Añadir configuración de firma compatible con electron-builder cuando correspon
 
 Añadir:
 
-- generación segura del archivo de configuración OAuth
+- generación del archivo de configuración OAuth a partir del Client ID existente
 - reconstrucción temporal del PFX
 - firma
 - verificación
@@ -289,10 +294,10 @@ Las instalaciones existentes pueden contener:
 Migración:
 
 1. Si existe un token válido actual, WeekCal puede conservarlo.
-2. Las credenciales OAuth antiguas seleccionadas manualmente se consideran legacy.
-3. En la primera versión con OAuth integrado, WeekCal intentará usar el token existente con las credenciales nuevas solo si son compatibles con el mismo OAuth client.
-4. Si no son compatibles, mostrará "Vuelve a conectar tu cuenta" y realizará un OAuth limpio.
-5. No se eliminará un token existente hasta que el usuario elija reconectar, cambiar cuenta o desconectar, salvo que sea inválido.
+2. Si existe `google-credentials.secure.json` en la PC original, WeekCal extraerá internamente su `client_id` para reutilizar la integración existente.
+3. El Client Secret antiguo no es necesario.
+4. Una vez que ese mismo Client ID se configure en GitHub Actions, todos los instaladores futuros lo incluirán automáticamente.
+5. Si el token existente no es compatible o fue revocado, WeekCal pedirá reconectar la cuenta, pero nunca volverá a pedir un JSON.
 
 ## Manejo de errores
 

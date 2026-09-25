@@ -4,3 +4,8 @@ dist/
 .DS_Store
 credentials*.json
 token*.json
+
+electron/google-app-config.generated.json
+
+electron/weekcal-auth-config.generated.json
+worker/wrangler.generated.toml

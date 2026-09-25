@@ -2,6 +2,9 @@ name: Build Windows
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
@@ -11,12 +14,122 @@ on:
       - "electron/**"
       - "renderer/**"
       - "native/**"
+      - "worker/**"
       - "tests/**"
       - "package.json"
       - ".github/workflows/build-windows.yml"
 
 jobs:
-  build:
+  native-validate:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build desktop helper
+        run: dotnet publish native/DesktopHost/DesktopHost.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o native/DesktopHost/publish
+
+  js-validate:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm test
+
+  cloudflare-auth:
+    needs:
+      - native-validate
+      - js-validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      auth_url: ${{ steps.deploy.outputs.auth_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: deploy
+        name: Deploy WeekCal authorization Worker and KV
+        shell: pwsh
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GOOGLE_CLIENT_ID: 761061579107-v9jis3ikqluqo1ghrb16antp1e4qoitv.apps.googleusercontent.com
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CF_API_TOKEN) -or [string]::IsNullOrWhiteSpace($env:CF_ACCOUNT_ID)) {
+            throw "WeekCal needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID GitHub secrets to deploy its private authorization service."
+          }
+
+          $headers = @{
+            Authorization = "Bearer $($env:CF_API_TOKEN)"
+            "Content-Type" = "application/json"
+          }
+
+          $listUrl = "https://api.cloudflare.com/client/v4/accounts/$($env:CF_ACCOUNT_ID)/storage/kv/namespaces?per_page=100"
+          $list = Invoke-RestMethod -Method Get -Uri $listUrl -Headers $headers
+          if (-not $list.success) { throw "Cloudflare could not list KV namespaces." }
+
+          $namespace = $list.result | Where-Object { $_.title -eq "weekcal-auth" } | Select-Object -First 1
+          if (-not $namespace) {
+            $body = @{ title = "weekcal-auth" } | ConvertTo-Json -Compress
+            $created = Invoke-RestMethod -Method Post -Uri "https://api.cloudflare.com/client/v4/accounts/$($env:CF_ACCOUNT_ID)/storage/kv/namespaces" -Headers $headers -Body $body
+            if (-not $created.success) { throw "Cloudflare could not create the WeekCal KV namespace." }
+            $namespace = $created.result
+          }
+
+          $wrangler = @"
+          name = "weekcal-auth"
+          main = "src/index.js"
+          compatibility_date = "2026-09-22"
+          workers_dev = true
+          account_id = "$($env:CF_ACCOUNT_ID)"
+
+          [[kv_namespaces]]
+          binding = "WEEKCAL_AUTH"
+          id = "$($namespace.id)"
+
+          [vars]
+          GOOGLE_CLIENT_ID = "$($env:GOOGLE_CLIENT_ID)"
+          "@
+
+          Set-Content -Path "worker/wrangler.generated.toml" -Value $wrangler -Encoding UTF8
+
+          $env:CLOUDFLARE_API_TOKEN = $env:CF_API_TOKEN
+          Push-Location worker
+          try {
+            $deployOutput = (& npx wrangler@4 deploy --config wrangler.generated.toml 2>&1 | Out-String)
+          } finally {
+            Pop-Location
+          }
+
+          Write-Host $deployOutput
+          if ($LASTEXITCODE -ne 0) { throw "Cloudflare Worker deployment failed." }
+
+          $match = [regex]::Match($deployOutput, 'https://[^\s]+\.workers\.dev')
+          if (-not $match.Success) { throw "Could not determine the deployed WeekCal authorization URL." }
+
+          $authUrl = $match.Value.TrimEnd('/')
+          Start-Sleep -Seconds 2
+          $health = Invoke-RestMethod -Method Get -Uri "$authUrl/health"
+          if (-not $health.ok) { throw "WeekCal authorization health check failed." }
+
+          "auth_url=$authUrl" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+  package:
+    needs:
+      - native-validate
+      - js-validate
+      - cloudflare-auth
     runs-on: windows-latest
     permissions:
       contents: read
@@ -31,8 +144,43 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - run: npm test
+      - name: Prepare WeekCal Google OAuth config
+        shell: pwsh
+        env:
+          WEEKCAL_GOOGLE_CLIENT_ID: ${{ vars.WEEKCAL_GOOGLE_CLIENT_ID }}
+          WEEKCAL_GOOGLE_CLIENT_SECRET: ${{ secrets.WEEKCAL_GOOGLE_CLIENT_SECRET }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WEEKCAL_GOOGLE_CLIENT_SECRET)) {
+            throw "WeekCal needs the WEEKCAL_GOOGLE_CLIENT_SECRET repository secret for Google Desktop OAuth on fresh PCs."
+          }
+          $clientId = $env:WEEKCAL_GOOGLE_CLIENT_ID
+          if ([string]::IsNullOrWhiteSpace($clientId)) {
+            $clientId = "761061579107-v9jis3ikqluqo1ghrb16antp1e4qoitv.apps.googleusercontent.com"
+          }
+          $config = @{
+            client_id = $clientId
+            client_secret = $env:WEEKCAL_GOOGLE_CLIENT_SECRET
+          } | ConvertTo-Json -Compress
+          Set-Content -Path "electron/google-app-config.generated.json" -Value $config -Encoding UTF8
+      - name: Prepare WeekCal authorization service config
+        shell: pwsh
+        env:
+          WEEKCAL_AUTH_URL: ${{ needs.cloudflare-auth.outputs.auth_url }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WEEKCAL_AUTH_URL)) {
+            throw "WeekCal authorization service URL is missing."
+          }
+          $config = @{
+            auth_url = $env:WEEKCAL_AUTH_URL
+          } | ConvertTo-Json -Compress
+          Set-Content -Path "electron/weekcal-auth-config.generated.json" -Value $config -Encoding UTF8
       - run: npm run dist:win
+      - name: Remove generated configs
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item "electron/google-app-config.generated.json" -Force -ErrorAction SilentlyContinue
+          Remove-Item "electron/weekcal-auth-config.generated.json" -Force -ErrorAction SilentlyContinue
       - uses: actions/upload-artifact@v4
         with:
           name: WeekCal-Windows-Installer

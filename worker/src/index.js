@@ -1,0 +1,410 @@
+const GOOGLE_CLIENT_ID = '761061579107-v9jis3ikqluqo1ghrb16antp1e4qoitv.apps.googleusercontent.com';
+
+const BOOTSTRAP_ADMIN_HASHES = new Set([
+  '0597f85b3b14fe6f0cacd069c939d7b2c1a675d5ca55d48d3a40b79f803adfb9',
+  'c2fd677917ac9415c01989c8198c1e6734e9a7c500aad6c689a22587d168d9e5',
+  '621a9bc5a0f2d74dde64e7a345ad4b641f9f8042a0e9d2d08166b8da72148a05'
+]);
+
+function normalizeEmail(value = '') {
+  return String(value).trim().toLowerCase();
+}
+
+function json(data, status = 200, extraHeaders = {}) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+      'access-control-allow-origin': '*',
+      'access-control-allow-headers': 'authorization, content-type',
+      'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS',
+      ...extraHeaders
+    }
+  });
+}
+
+function html(body, status = 200) {
+  return new Response(body, {
+    status,
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'public, max-age=300',
+      'x-content-type-options': 'nosniff',
+      'referrer-policy': 'no-referrer'
+    }
+  });
+}
+
+function publicPage({ title, content }) {
+  return `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${title}</title>
+  <style>
+    :root { color-scheme: light dark; font-family: Inter, Segoe UI, system-ui, sans-serif; }
+    body { margin: 0; background: #f5f5f3; color: #1f2328; }
+    main { max-width: 760px; margin: 56px auto; padding: 0 24px 56px; }
+    .card { background: #fff; border: 1px solid #ddd; border-radius: 18px; padding: 32px; box-shadow: 0 8px 30px rgba(0,0,0,.06); }
+    h1 { margin-top: 0; font-size: 2rem; }
+    h2 { margin-top: 2rem; font-size: 1.15rem; }
+    p, li { line-height: 1.65; }
+    a { color: #0b57d0; }
+    .brand { font-weight: 700; letter-spacing: .02em; margin-bottom: 10px; }
+    .muted { color: #59636e; font-size: .95rem; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #16181b; color: #e8eaed; }
+      .card { background: #202124; border-color: #3c4043; box-shadow: none; }
+      a { color: #8ab4f8; }
+      .muted { color: #bdc1c6; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="card">
+      <div class="brand">YouTeach · WeekCal</div>
+      ${content}
+    </div>
+  </main>
+</body>
+</html>`;
+}
+
+function homePage() {
+  return publicPage({
+    title: 'WeekCal — YouTeach',
+    content: `
+      <h1>WeekCal</h1>
+      <p>WeekCal es una aplicación de escritorio para Windows que muestra una vista semanal y sincroniza los eventos del usuario con Google Calendar.</p>
+      <p>La conexión con Google se utiliza únicamente para identificar la cuenta autorizada y para leer, crear, editar y eliminar eventos del calendario cuando el usuario lo solicita.</p>
+      <p><a href="/privacy">Política de privacidad</a> · <a href="/terms">Condiciones del servicio</a></p>
+      <p class="muted">Servicio de YouTeach.</p>
+    `
+  });
+}
+
+function privacyPage() {
+  return publicPage({
+    title: 'Política de privacidad — WeekCal',
+    content: `
+      <h1>Política de privacidad de WeekCal</h1>
+      <p class="muted">Última actualización: 24 de septiembre de 2026.</p>
+
+      <h2>Qué datos utiliza WeekCal</h2>
+      <p>WeekCal solicita acceso a la identidad básica de la cuenta de Google y a Google Calendar. Esto permite identificar la cuenta conectada, mostrar sus calendarios y eventos, y realizar cambios en eventos cuando el usuario usa las funciones de edición de la aplicación.</p>
+
+      <h2>Cómo se usan los datos</h2>
+      <p>Los datos de Google Calendar se usan exclusivamente para proporcionar las funciones de calendario de WeekCal. WeekCal no vende datos personales ni utiliza los datos de Google Calendar para publicidad.</p>
+
+      <h2>Almacenamiento</h2>
+      <p>Los tokens de Google necesarios para mantener la sesión se almacenan cifrados en la computadora del usuario mediante las protecciones del sistema operativo. El servicio de autorización de WeekCal mantiene una lista central de correos autorizados para controlar quién puede usar la aplicación.</p>
+
+      <h2>Servicio de autorización</h2>
+      <p>Durante las comprobaciones de acceso, WeekCal envía a su servicio de autorización la información necesaria para validar con Google la identidad de la cuenta conectada. El servicio no almacena los eventos del calendario.</p>
+
+      <h2>Revocación y eliminación</h2>
+      <p>El usuario puede desconectar Google desde WeekCal. También puede revocar el acceso de la aplicación desde la configuración de seguridad de su cuenta de Google. Los administradores de WeekCal pueden retirar una cuenta de la lista de usuarios autorizados.</p>
+
+      <h2>Uso limitado de datos de Google</h2>
+      <p>El uso que WeekCal hace de la información recibida de las APIs de Google está limitado a proporcionar y mejorar las funciones visibles de calendario solicitadas por el usuario.</p>
+
+      <h2>Contacto</h2>
+      <p>Las consultas de privacidad y soporte se atienden mediante los canales de soporte indicados en la pantalla de consentimiento de Google de WeekCal.</p>
+
+      <p><a href="/">Volver a WeekCal</a></p>
+    `
+  });
+}
+
+function termsPage() {
+  return publicPage({
+    title: 'Condiciones del servicio — WeekCal',
+    content: `
+      <h1>Condiciones del servicio de WeekCal</h1>
+      <p class="muted">Última actualización: 24 de septiembre de 2026.</p>
+
+      <h2>Uso del servicio</h2>
+      <p>WeekCal es una aplicación de escritorio para Windows que permite visualizar y administrar eventos de Google Calendar. El usuario debe utilizar la aplicación de forma lícita y conforme a las condiciones de Google aplicables a su cuenta.</p>
+
+      <h2>Acceso a Google Calendar</h2>
+      <p>WeekCal únicamente accede a la información de Google que el usuario autoriza mediante OAuth. El acceso puede revocarse en cualquier momento desde WeekCal o desde la configuración de la cuenta de Google.</p>
+
+      <h2>Disponibilidad</h2>
+      <p>WeekCal se ofrece tal como está y puede recibir actualizaciones, correcciones o cambios de funcionalidad. La disponibilidad de funciones que dependen de Google Calendar también está sujeta a los servicios de Google.</p>
+
+      <h2>Privacidad</h2>
+      <p>El tratamiento de datos de WeekCal se describe en la <a href="/privacy">Política de privacidad</a>.</p>
+
+      <h2>Contacto</h2>
+      <p>Las consultas de soporte se atienden mediante el correo de asistencia indicado en la pantalla de consentimiento de Google.</p>
+
+      <p><a href="/">Volver a WeekCal</a></p>
+    `
+  });
+}
+
+async function sha256Hex(value) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function ensureBootstrapAccount(env, email) {
+  const normalized = normalizeEmail(email);
+  if (await env.WEEKCAL_AUTH.get('allow:' + normalized)) return;
+
+  const hash = await sha256Hex(normalized);
+  if (!BOOTSTRAP_ADMIN_HASHES.has(hash)) return;
+
+  await env.WEEKCAL_AUTH.put('allow:' + normalized, JSON.stringify({
+    email: normalized,
+    addedAt: new Date().toISOString(),
+    source: 'bootstrap'
+  }));
+  await env.WEEKCAL_AUTH.put('admin:' + normalized, '1');
+}
+
+function bearer(request) {
+  const header = request.headers.get('authorization') || '';
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : '';
+}
+
+function expectedClientId(env) {
+  return String(env.GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID).trim();
+}
+
+function assertAudience(payload, env) {
+  const expected = expectedClientId(env);
+  const candidates = [
+    payload.aud,
+    payload.audience,
+    payload.issued_to,
+    payload.azp
+  ].filter(Boolean).map(String);
+
+  if (!candidates.includes(expected)) {
+    throw new Error('El token de Google no pertenece a la integración de WeekCal.');
+  }
+}
+
+async function verifyIdToken(env, idToken) {
+  if (!idToken) throw new Error('Falta el token de identidad de Google.');
+
+  const response = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken));
+  if (!response.ok) throw new Error('Google rechazó el token de identidad.');
+
+  const payload = await response.json();
+  assertAudience(payload, env);
+
+  const email = normalizeEmail(payload.email);
+  if (!email || String(payload.email_verified) !== 'true') {
+    throw new Error('Google no pudo verificar el correo de esta cuenta.');
+  }
+
+  return { email, payload };
+}
+
+async function verifyAccessToken(env, accessToken) {
+  if (!accessToken) throw new Error('Falta la sesión de Google.');
+
+  const tokenInfoResponse = await fetch(
+    'https://oauth2.googleapis.com/tokeninfo?access_token=' + encodeURIComponent(accessToken)
+  );
+  if (!tokenInfoResponse.ok) throw new Error('La sesión de Google expiró o no es válida.');
+
+  const tokenInfo = await tokenInfoResponse.json();
+  assertAudience(tokenInfo, env);
+
+  let userInfo = null;
+  let email = '';
+
+  const userInfoResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+    headers: { authorization: 'Bearer ' + accessToken }
+  });
+
+  if (userInfoResponse.ok) {
+    userInfo = await userInfoResponse.json();
+    if (userInfo.email_verified === true) email = normalizeEmail(userInfo.email);
+  }
+
+  // Older WeekCal tokens were issued without openid/email. They still identify
+  // the account cryptographically through the token's audience, and Calendar's
+  // primary calendar ID is the Google account email for these installations.
+  if (!email) {
+    const calendarsResponse = await fetch(
+      'https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250&showHidden=true',
+      { headers: { authorization: 'Bearer ' + accessToken } }
+    );
+
+    if (calendarsResponse.ok) {
+      const calendars = await calendarsResponse.json();
+      email = normalizeEmail((calendars.items || []).find(item => item.primary)?.id || '');
+    }
+  }
+
+  if (!email) throw new Error('Google no pudo identificar la cuenta conectada.');
+
+  return { email, tokenInfo, userInfo };
+}
+
+async function isAllowed(env, email) {
+  return Boolean(await env.WEEKCAL_AUTH.get('allow:' + normalizeEmail(email)));
+}
+
+async function isAdmin(env, email) {
+  return Boolean(await env.WEEKCAL_AUTH.get('admin:' + normalizeEmail(email)));
+}
+
+async function requireAdmin(request, env) {
+  const accessToken = bearer(request);
+  const identity = await verifyAccessToken(env, accessToken);
+  await ensureBootstrapAccount(env, identity.email);
+  if (!(await isAllowed(env, identity.email)) || !(await isAdmin(env, identity.email))) {
+    throw new Error('Esta cuenta no tiene permisos para administrar usuarios de WeekCal.');
+  }
+  return identity;
+}
+
+async function listAllowedUsers(env) {
+  const users = [];
+  let cursor;
+
+  do {
+    const page = await env.WEEKCAL_AUTH.list({
+      prefix: 'allow:',
+      cursor,
+      limit: 1000
+    });
+
+    for (const key of page.keys) {
+      const email = key.name.slice('allow:'.length);
+      users.push({
+        email,
+        admin: await isAdmin(env, email)
+      });
+    }
+
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+
+  return users.sort((a, b) => a.email.localeCompare(b.email));
+}
+
+async function readJson(request) {
+  try {
+    return await request.json();
+  } catch {
+    return {};
+  }
+}
+
+export default {
+  async fetch(request, env) {
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'access-control-allow-origin': '*',
+          'access-control-allow-headers': 'authorization, content-type',
+          'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS'
+        }
+      });
+    }
+
+    const url = new URL(request.url);
+
+    try {
+      if (request.method === 'GET' && url.pathname === '/') {
+        return html(homePage());
+      }
+
+      if (request.method === 'GET' && url.pathname === '/privacy') {
+        return html(privacyPage());
+      }
+
+      if (request.method === 'GET' && url.pathname === '/terms') {
+        return html(termsPage());
+      }
+
+      if (request.method === 'GET' && url.pathname === '/health') {
+        return json({ ok: true, service: 'weekcal-auth' });
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/check-identity') {
+        const body = await readJson(request);
+        const identity = await verifyIdToken(env, body.idToken);
+        await ensureBootstrapAccount(env, identity.email);
+        const authorized = await isAllowed(env, identity.email);
+
+        return json({
+          authorized,
+          email: identity.email,
+          admin: authorized ? await isAdmin(env, identity.email) : false
+        }, authorized ? 200 : 403);
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/check-access') {
+        const body = await readJson(request);
+        const identity = await verifyAccessToken(env, body.accessToken);
+        await ensureBootstrapAccount(env, identity.email);
+        const authorized = await isAllowed(env, identity.email);
+
+        return json({
+          authorized,
+          email: identity.email,
+          admin: authorized ? await isAdmin(env, identity.email) : false
+        }, authorized ? 200 : 403);
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/admin/users') {
+        const identity = await requireAdmin(request, env);
+        return json({
+          adminEmail: identity.email,
+          users: await listAllowedUsers(env)
+        });
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/admin/users') {
+        await requireAdmin(request, env);
+        const body = await readJson(request);
+        const email = normalizeEmail(body.email);
+
+        if (!/^\S+@\S+\.\S+$/.test(email)) {
+          return json({ error: 'Correo no válido.' }, 400);
+        }
+
+        await env.WEEKCAL_AUTH.put('allow:' + email, JSON.stringify({
+          email,
+          addedAt: new Date().toISOString(),
+          source: 'admin'
+        }));
+
+        return json({ ok: true, email, users: await listAllowedUsers(env) });
+      }
+
+      if (request.method === 'DELETE' && url.pathname === '/api/admin/users') {
+        const identity = await requireAdmin(request, env);
+        const body = await readJson(request);
+        const email = normalizeEmail(body.email);
+
+        if (!email) return json({ error: 'Falta el correo.' }, 400);
+        if (email === identity.email) {
+          return json({ error: 'No puedes quitar tu propia cuenta mientras administras WeekCal.' }, 400);
+        }
+
+        await env.WEEKCAL_AUTH.delete('allow:' + email);
+        await env.WEEKCAL_AUTH.delete('admin:' + email);
+
+        return json({ ok: true, email, users: await listAllowedUsers(env) });
+      }
+
+      return json({ error: 'Not found' }, 404);
+    } catch (error) {
+      return json({ error: error?.message || 'Error de autorización.' }, 401);
+    }
+  }
+};

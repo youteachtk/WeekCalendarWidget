@@ -1,6 +1,6 @@
 {
   "name": "weekcal-widget",
-  "version": "0.4.6",
+  "version": "0.5.7",
   "description": "Colorful Windows weekly calendar widget with Google Calendar sync",
   "main": "electron/bootstrap.js",
   "author": "YouTeach",
@@ -13,6 +13,7 @@
     "test": "node --test tests/*.test.js"
   },
   "dependencies": {
+    "google-auth-library": "latest",
     "googleapis": "latest"
   },
   "devDependencies": {
