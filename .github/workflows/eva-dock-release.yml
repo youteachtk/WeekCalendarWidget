@@ -16,11 +16,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-      - name: Compilar Windows (sin imagenes privadas)
+      - name: Compilar Windows con las seis poses generadas de Eva
         run: |
           cd eva-dock
           V=$(cat version.txt)
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-H=windowsgui -s -w -X main.version=$V" -o EvaDock.exe .
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -tags eva_assets -ldflags="-H=windowsgui -s -w -X main.version=$V" -o EvaDock.exe .
           sha256sum EvaDock.exe > EvaDock.sha256
       - name: Publicar nueva version
         env:
@@ -34,4 +34,4 @@ jobs:
           fi
           gh release create "$TAG" eva-dock/EvaDock.exe eva-dock/EvaDock.sha256 \
              --target "$GITHUB_SHA" --title "Eva Dock $V" \
-             --notes "Actualizacion de Eva Dock. Conserva las seis poses privadas instaladas en el equipo."
+             --notes "Actualizacion de Eva Dock. Incluye las seis poses generadas de Eva y conserva las preferencias y archivos existentes."

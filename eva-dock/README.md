@@ -19,3 +19,8 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags='-H=windowsgui -s -w' 
 ```
 
 La primera instalación se construye de manera local con `-tags eva_assets`, para incorporar las imágenes aprobadas sin enviarlas a repositorios públicos.
+
+
+## Instalacion permanente
+
+Descarga EvaDock.exe desde la ultima publicacion de esta rama. En el primer inicio se instala automaticamente en LOCALAPPDATA\EvaDock, crea acceso directo en Inicio y se actualiza mediante futuras publicaciones en GitHub. Las seis poses de arte generado se incluyen en el ejecutable y no contienen fotografias originales del usuario.

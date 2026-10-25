@@ -82,6 +82,16 @@ func firstInstallIfNeeded() bool {
 	if err := os.MkdirAll(installDir(), 0700); err != nil {
 		return false
 	}
+	// A first-time installer must never overwrite a version already updated by GitHub.
+	// Launch the permanent installed copy instead of downgrading it.
+	if info, statErr := os.Stat(dst); statErr == nil && info.Size() > 10000 {
+		makeStartMenuShortcut(dst)
+		if err := exec.Command(dst, "--installed").Start(); err == nil {
+			return true
+		}
+		logErr("No se pudo abrir la copia instalada")
+		return false
+	}
 	if err := safeCopy(dst, self); err != nil {
 		// If another running copy is present, let the current EXE start rather than crash.
 		logErr("No se pudo instalar automaticamente: " + err.Error())
